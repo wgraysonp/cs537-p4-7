@@ -3,6 +3,15 @@
 #define MAP_SHARED 0x0002
 #define MAP_ANONYMOUS 0x0004
 #define MAP_FIXED 0x0008
+
+// single mapping
+struct map {
+	uint addr;    	// starting address of mapping
+	int pages;      // total number of pages
+	int mapshared;  // 1 if MAP_SHARED 0 if MAP_PRIVATE
+	int fd;         // file descriptor for file backed mapping. set to -1 if not file backed
+};
+
 // Flags for remap
 #define FAILED -1
 #define SUCCESS 0
