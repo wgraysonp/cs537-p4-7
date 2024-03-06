@@ -6,10 +6,12 @@
 
 // single mapping
 struct map {
-	uint addr;    	// starting address of mapping
-	int pages;      // total number of pages
-	int mapshared;  // 1 if MAP_SHARED 0 if MAP_PRIVATE
-	int fd;         // file descriptor for file backed mapping. set to -1 if not file backed
+	int used;	   // is the mapping used by a process
+	uint addr;    	   // starting address of mapping
+	int pages;         // total number of pages
+	int n_alloc_pages; // number of pages physically allocated 
+	int mapshared;     // 1 if MAP_SHARED 0 if MAP_PRIVATE
+	int fd;            // file descriptor for file backed mapping. set to -1 if not file backed
 };
 
 // Flags for remap

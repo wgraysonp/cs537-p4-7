@@ -1,6 +1,7 @@
 struct buf;
 struct context;
 struct file;
+struct map;
 struct inode;
 struct pipe;
 struct proc;
@@ -86,6 +87,10 @@ void            initlog(int dev);
 void            log_write(struct buf*);
 void            begin_op();
 void            end_op();
+
+//map.c
+void 		mapinit(void);
+struct map*     mapalloc(void);
 
 // mp.c
 extern int      ismp;

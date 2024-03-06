@@ -18,24 +18,49 @@
 // type `map` containing metadata for one memory mapping. struct `map` is
 // defined in wmap.h
 
+
 int sys_wmap(void){
 	
-	int addr;
+	int new_addr;
 	int length;
 	int flags;
 	//int fd;
 
-	if(argint(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &flags) < 0){
+	if(argint(0, &new_addr) < 0 || argint(1, &length) < 0 || argint(2, &flags) < 0){
 		return -1;
 	}
-	addr = (uint)addr;
+	new_addr = (uint)new_addr;
+
+
 
 	struct proc *curproc = myproc();
-	if (curproc->wmaps[0] == 0){
-		return 100;
+	uint curr_addr;
+	int curr_pages;
+
+	for (int i = 0; i < MAX_WMAP; i++){
+		if (curproc->wmaps[i] == 0){
+			struct map *new_map;
+			if ((new_map = mapalloc())==0){
+				return FAILED;
+			}
+			new_map->addr = new_addr;
+			new_map->pages = length/4096;
+			new_map->mapshared = 1;
+			new_map->fd = -1;
+			new_map->n_alloc_pages = 0;
+			curproc->wmaps[i] = new_map;
+			return SUCCESS;
+		} else {
+			curr_addr = curproc->wmaps[i]->addr;
+			curr_pages = curproc->wmaps[i]->pages;
+			if(curr_addr <= new_addr && new_addr < curr_addr + 4096*curr_pages){
+				// pages already allocated
+				return FAILED;
+			}
+		}
 	}
 
-	return flags;
+	return FAILED;
 }
 
 int sys_wunmap(void){
