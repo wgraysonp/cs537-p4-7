@@ -91,6 +91,7 @@ void            end_op();
 //map.c
 void 		mapinit(void);
 struct map*     mapalloc(void);
+void            unmap(struct map *m);
 
 // mp.c
 extern int      ismp;

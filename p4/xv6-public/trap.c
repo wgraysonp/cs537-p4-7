@@ -81,21 +81,28 @@ trap(struct trapframe *tf)
   case T_PGFLT:
     	struct map *m;
 	char *mem;	
+	int found = 0;
+	cprintf("In page fault\n");
 	for (int i = 0; i < MAX_WMAP; i++){
 		m = myproc()->wmaps[i];
-		if (m == 0){
-			cprintf("Segmentation Fault\n");
-			myproc()->killed = 1;
-			break;
-		} else if (m->addr <= rcr2() && m->addr + 4096*(m->pages) > rcr2()){
+		if (m->addr <= rcr2() && m->addr + 4096*(m->pages) > rcr2()){
 			uint pagebase = (rcr2()/4096)*4096;
 			mem = kalloc();
+			if (mem == 0){
+				cprintf("Allocation failed\n");
+				myproc()->killed = 1;
+				break;
+			}
 			mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U);
 			m->n_alloc_pages++;
+			found = 1;
 			break;
-		} else {
-			continue;
 		}
+	}
+	if (found == 0){
+		// mapping doesnt exist
+		cprintf("Segmentation Fault\n");
+		myproc()->killed=1;
 	}
     break;
 
