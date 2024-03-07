@@ -1,6 +1,5 @@
 // Memory mapping system calls
 
-
 #include "types.h"
 #include "defs.h"
 #include "param.h"
@@ -66,5 +65,26 @@ int sys_wmap(void){
 }
 
 int sys_wunmap(void){
-	return 0;
+	int addr;
+	if (argint(0, &addr) < 0){
+		return -1;
+	}
+
+	struct proc *curproc = myproc();
+	uint curr_addr;
+	int curr_pages;
+
+	for (int i = 0; i < MAX_WMAP; i++){
+		if (curproc->wmaps[i] != 0){
+			curr_addr = curproc->wmaps[i]->addr;
+			curr_pages = curproc->wmaps[i]->pages;
+			if (curr_addr <= addr && addr < curr_addr + 4096*curr_pages){
+				unmap(curproc->wmaps[i]);
+				curproc->wmaps[i] = 0;
+				return 0;
+			}
+		}
+	}
+
+	return -1;
 }
