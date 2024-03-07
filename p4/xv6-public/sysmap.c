@@ -41,7 +41,8 @@ int sys_wmap(void){
 		if (curproc->wmaps[i] == 0){
 			struct map *new_map;
 			if ((new_map = mapalloc())==0){
-				return FAILED;
+				cprintf("map alloc failed\n");
+				return 0;
 			}
 			new_map->addr = new_addr;
 			new_map->pages = length/4096;
@@ -49,18 +50,19 @@ int sys_wmap(void){
 			new_map->fd = -1;
 			new_map->n_alloc_pages = 0;
 			curproc->wmaps[i] = new_map;
-			return SUCCESS;
+			return new_addr;
 		} else {
 			curr_addr = curproc->wmaps[i]->addr;
 			curr_pages = curproc->wmaps[i]->pages;
 			if(curr_addr <= new_addr && new_addr < curr_addr + 4096*curr_pages){
 				// pages already allocated
-				return FAILED;
+				cprintf("page already allocated\n");
+				return 0;
 			}
 		}
 	}
-
-	return FAILED;
+	cprintf("made it to the end\n");
+	return 0;
 }
 
 int sys_wunmap(void){

@@ -7,6 +7,7 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "wmap.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -76,6 +77,26 @@ trap(struct trapframe *tf)
     cprintf("cpu%d: spurious interrupt at %x:%x\n",
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
+    break;
+  case T_PGFLT:
+    	struct map *m;
+	char *mem;	
+	for (int i = 0; i < MAX_WMAP; i++){
+		m = myproc()->wmaps[i];
+		if (m == 0){
+			cprintf("Segmentation Fault\n");
+			myproc()->killed = 1;
+			break;
+		} else if (m->addr <= rcr2() && m->addr + 4096*(m->pages) > rcr2()){
+			uint pagebase = (rcr2()/4096)*4096;
+			mem = kalloc();
+			mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U);
+			m->n_alloc_pages++;
+			break;
+		} else {
+			continue;
+		}
+	}
     break;
 
   //PAGEBREAK: 13
