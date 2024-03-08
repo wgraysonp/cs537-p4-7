@@ -96,7 +96,7 @@ filestat(struct file *f, struct stat *st)
 int
 fileread(struct file *f, char *addr, int n)
 {
-  int r;
+  int r; 
 
   if(f->readable == 0)
     return -1;

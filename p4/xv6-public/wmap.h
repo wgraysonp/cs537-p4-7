@@ -8,6 +8,7 @@
 struct map {
 	int used;	   // is the mapping used by a process
 	uint addr;    	   // starting address of mapping
+	int size; 	   // size of requested mapping in bytes
 	int pages;         // total number of pages
 	int n_alloc_pages; // number of pages physically allocated 
 	int mapshared;     // 1 if MAP_SHARED 0 if MAP_PRIVATE
