@@ -7,7 +7,10 @@
 #include "x86.h"
 #include "traps.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "wmap.h"
+#include "fs.h"
+#include "file.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -82,27 +85,72 @@ trap(struct trapframe *tf)
     	struct map *m;
 	char *mem;	
 	int found = 0;
-	cprintf("In page fault\n");
+	int map_suc;
+	int file_suc;
+	struct file *f;
 	for (int i = 0; i < MAX_WMAP; i++){
 		m = myproc()->wmaps[i];
 		if (m->addr <= rcr2() && m->addr + 4096*(m->pages) > rcr2()){
-			uint pagebase = (rcr2()/4096)*4096;
-			mem = kalloc();
-			if (mem == 0){
-				cprintf("Allocation failed\n");
-				myproc()->killed = 1;
-				break;
+			uint pagebase;
+			if (m->fd > -1){
+				for (int i = 0; i < m->pages; i++){
+					if ((mem = kalloc()) == 0){
+						cprintf("Allocation failed\n");
+						myproc()->killed = 1;
+						exit();
+					}
+					pagebase = m->addr + 4096*i;
+					if ((map_suc = mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U))==-1){
+						cprintf("mappages failed\n");
+						myproc()->killed = 1;
+						exit();
+					}
+					m->n_alloc_pages++;
+				}
+
+
+				if((f = myproc()->ofile[m->fd]) == 0){
+					// this should already be checked for in sysmap.c
+					// but no harm in checking twice
+					cprintf("File not open");
+					myproc()->killed = 1;
+					exit();
+				}
+
+				if ((file_suc = fileread(f, (char*)(m->addr), m->size)) < 0){
+				        cprintf("File read failed\n");
+			       	       	myproc()->killed = 1;
+				 	exit();
+				}
+	
+
+			} else {
+				pagebase = (rcr2()/4096)*4096;
+				mem = kalloc();
+				if (mem == 0){
+					cprintf("Allocation failed\n");
+					myproc()->killed = 1;
+					exit();
+				}
+				if ((map_suc =  mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U)) == -1){
+					cprintf("mappages failed\n");
+					myproc()->killed = 1;
+					exit();
+				}
+				m->n_alloc_pages++;
 			}
-			mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U);
-			m->n_alloc_pages++;
+
+
 			found = 1;
 			break;
 		}
+
 	}
 	if (found == 0){
 		// mapping doesnt exist
-		cprintf("Segmentation Fault\n");
+		cprintf("Segmentation Fault addr 0x%x\n", rcr2());
 		myproc()->killed=1;
+		exit();
 	}
     break;
 
