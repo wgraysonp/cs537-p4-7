@@ -35,9 +35,23 @@ struct map* mapalloc(void){
 	return 0;
 }
 
-void unmap(struct map *m){
+int unmap(struct map *m){
 	uint addr;
 	pte_t *pte;
+	if (m->mapshared == 1){
+		// write changes to file
+		struct file *f;
+		int write_suc;
+		if ((f = myproc()->ofile[m->fd])==0){
+			return -1;
+		}
+		// set offset to zero to overwrite current contents
+		f->off = 0;
+		if ((write_suc = filewrite(f, (char*)(m->addr), m->size)) < 0){
+			return -1;
+		}
+		
+	}	
 	for (int i = 0; i < m->pages; i++){
 		addr = m->addr + 4096*i;
 		pte = walkpgdir(myproc()->pgdir, (void*)addr, 0);
@@ -55,6 +69,8 @@ void unmap(struct map *m){
 	m->n_alloc_pages = 0;
 	m->mapshared = 0;
 	m->fd = 0;
+
+	return 0;
 }
 
 
