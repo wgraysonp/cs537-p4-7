@@ -103,7 +103,8 @@ int sys_wunmap(void){
 			curr_addr = curproc->wmaps[i]->addr;
 			curr_pages = curproc->wmaps[i]->pages;
 			if (curr_addr <= addr && addr < curr_addr + 4096*curr_pages){
-				unmap(curproc->wmaps[i]);
+				if(unmap(curproc->wmaps[i]) == -1)
+					return -1;
 				curproc->wmaps[i] = 0;
 				return 0;
 			}
