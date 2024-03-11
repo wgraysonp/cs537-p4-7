@@ -12,6 +12,7 @@
 #include "fcntl.h"
 #include "wmap.h"
 #include "memlayout.h"
+#include <stdio.h>
 
 // Each process now has an array wmaps that can be accessed by p->wmaps.
 // wmaps has length MAX_WMAP=16. Each entry is a pointer to a struct of 
@@ -112,4 +113,54 @@ int sys_wunmap(void){
 	}
 
 	return -1;
+}
+
+int sys_getpgdirinfo(void) {
+	struct pgdirinfo *pdinfo;
+	struct proc *currproc = myproc();
+	argptr(0, (char**)&pdinfo, sizeof(struct pgdirinfo));
+	memset(pdinfo, 0, sizeof(*pdinfo));
+
+	uint va;
+	pte_t *pte;
+	for (va = 0; va < KERNBASE; va+= 4096) {
+		pte = walkpgdir(currproc->pgdir, (void*)va, 0);
+		// check if page is user-accessible
+		if (pte && (*pte & PTE_U)) {
+			uint pages = pdinfo->n_upages;
+			pdinfo->va[pages] = va;
+			pdinfo->pa[pages] = PTE_ADDR(*pte);
+			pdinfo->n_upages++;
+		}
+
+	}
+	// temp - ignore
+	return 0;
+}
+
+
+int sys_getwmapinfo(void) {
+	struct wmapinfo *wminfo;
+	struct proc *currproc = myproc();
+	argptr(0, (char**)&wminfo, sizeof(struct wmapinfo));
+
+	// count used mappings
+	int count = 0;
+	for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+		if (currproc->wmaps[i] && currproc->wmaps[i]->used) {
+			wminfo->addr[count] = currproc->wmaps[i]->addr;
+			wminfo->length[count] = currproc->wmaps[i]->size;
+			wminfo->n_loaded_pages[count] = currproc->wmaps[i]->n_alloc_pages;
+			count++;
+		}
+	}
+	wminfo->total_mmaps = count; 
+	return 0;
+}
+
+int sys_wremap(void) {
+	// debugging
+
+	// temp
+	return 0;
 }
