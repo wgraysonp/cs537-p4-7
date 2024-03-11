@@ -87,57 +87,47 @@ trap(struct trapframe *tf)
 	int found = 0;
 	int map_suc;
 	int file_suc;
+	int read_length;
 	struct file *f;
 	for (int i = 0; i < MAX_WMAP; i++){
 		m = myproc()->wmaps[i];
 		if (m->addr <= rcr2() && m->addr + 4096*(m->pages) > rcr2()){
 			uint pagebase;
+			pagebase = (rcr2()/4096)*4096;
+			mem = kalloc();
+			if (mem == 0){
+				cprintf("Allocation failed\n");
+				myproc()->killed = 1;
+				exit();
+			}
+			memset(mem, 0, 4096);
+			if ((map_suc =  mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U)) == -1){
+				cprintf("mappages failed\n");
+				myproc()->killed = 1;
+				exit();
+			}
+			m->n_alloc_pages++;
+				
 			if (m->fd > -1){
-				for (int i = 0; i < m->pages; i++){
-					if ((mem = kalloc()) == 0){
-						cprintf("Allocation failed\n");
-						myproc()->killed = 1;
-						exit();
-					}
-					pagebase = m->addr + 4096*i;
-					if ((map_suc = mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U))==-1){
-						cprintf("mappages failed\n");
-						myproc()->killed = 1;
-						exit();
-					}
-					m->n_alloc_pages++;
-				}
-
-
-				if((f = myproc()->ofile[m->fd]) == 0){
-					// this should already be checked for in sysmap.c
-					// but no harm in checking twice
+				if ((f = myproc()->ofile[m->fd]) == 0){
 					cprintf("File not open");
 					myproc()->killed = 1;
 					exit();
 				}
 
-				if ((file_suc = fileread(f, (char*)(m->addr), m->size)) < 0){
-				        cprintf("File read failed\n");
-			       	       	myproc()->killed = 1;
-				 	exit();
-				}
-	
+				f->off = pagebase-(m->addr);
+				if (f->ip->size - f->off > 4096){
+					read_length = 4096;
+					} else {
+						read_length = f->ip->size - f->off;
+					}
 
-			} else {
-				pagebase = (rcr2()/4096)*4096;
-				mem = kalloc();
-				if (mem == 0){
-					cprintf("Allocation failed\n");
+				if ((file_suc = fileread(f, (char*)(pagebase), read_length)) < 0){
+					cprintf("File read failed\n");
 					myproc()->killed = 1;
 					exit();
 				}
-				if ((map_suc =  mappages(myproc()->pgdir, (void*)pagebase, 4096, V2P(mem), PTE_W | PTE_U)) == -1){
-					cprintf("mappages failed\n");
-					myproc()->killed = 1;
-					exit();
-				}
-				m->n_alloc_pages++;
+				
 			}
 
 
