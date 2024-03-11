@@ -38,23 +38,34 @@ struct map* mapalloc(void){
 int unmap(struct map *m){
 	uint addr;
 	pte_t *pte;
-	if (m->mapshared == 1){
-		// write changes to file
-		struct file *f;
-		int write_suc;
-		if ((f = myproc()->ofile[m->fd])==0){
+	int write_length;
+	int write_suc;
+	struct file *f;
+
+	if (m->fd > -1){
+		if ((f = myproc()->ofile[m->fd]) ==0){
 			return -1;
 		}
-		// set offset to zero to overwrite current contents
-		f->off = 0;
-		if ((write_suc = filewrite(f, (char*)(m->addr), m->size)) < 0){
-			return -1;
-		}
-		
-	}	
+	} else {
+		f = 0;
+	}
+
 	for (int i = 0; i < m->pages; i++){
 		addr = m->addr + 4096*i;
 		pte = walkpgdir(myproc()->pgdir, (void*)addr, 0);
+
+		if (f && m->mapshared == 1 && (*pte & PTE_P)){
+                        f->off = 4096*i;
+			if (f->ip->size - f->off > 4096){
+				write_length = 4096;
+			} else {
+				write_length = f->ip->size - f->off;
+			}
+
+			if ((write_suc = filewrite(f, (char*)addr, write_length)) < 0){
+				return -1;
+			}
+                }
 		if (*pte != 0){
       			char *pa = P2V(PTE_ADDR(*pte));
 			kfree(pa);
@@ -88,7 +99,7 @@ int ismapped(uint addr){
 
 
 uint get_addr(int new_addr, int num_pages, int flags){
-	uint base = 0x60000000;
+ uint base = 0x60000000;
 
  if (flags & MAP_FIXED){
                 new_addr = (uint)new_addr;
@@ -109,7 +120,7 @@ uint get_addr(int new_addr, int num_pages, int flags){
                                 for (int i = 1; i < num_pages; i++){
                                         // check to make sure all requested pages starting at new_addr are
                                         // available
-                                        curr_page = curr_page + 4096*i;
+                                        curr_page = curr_page + 4096;
                                         if (ismapped(curr_page) == -1){
                                                 // not all pages requested are available starting at new_addr
                                                 map_available = 0;
@@ -122,7 +133,6 @@ uint get_addr(int new_addr, int num_pages, int flags){
                                         break;
                                 }
                         }
-
                         curr_page = curr_page + 4096;
                 }
 
