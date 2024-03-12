@@ -134,7 +134,6 @@ int sys_getpgdirinfo(void) {
 		}
 
 	}
-	// temp - ignore
 	return 0;
 }
 
@@ -158,9 +157,80 @@ int sys_getwmapinfo(void) {
 	return 0;
 }
 
-int sys_wremap(void) {
-	// debugging
 
-	// temp
-	return 0;
+
+// used in sys_wremap for finding new location
+uint new_addr(struct proc *currproc, int newsize) {
+	uint base = 0x60000000;
+	for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+		// check if newsize fits in free space before next mapping
+		if ((base + newsize <= currproc->wmaps[i]->addr) && (base + newsize <= KERNBASE)) {
+			return base; // free space found
+		} else {
+			base = currproc->wmaps[i]->addr + currproc->wmaps[i]->size; // move to next free space
+		}
+	}
+	if (base + newsize <= KERNBASE) {
+		return base;
+	}
+	return 0; // free space not found
+} 
+
+
+int sys_wremap(void) {
+	struct proc *currproc = myproc();
+	uint oldaddr;
+	int oldsize;
+	int newsize;
+	int flags;
+	int grow_in_place = 1; 
+
+	if (argint(0, (int *)&oldaddr) < 0 || argint(1, &oldsize) < 0 || argint(2, &newsize) < 0 || argint(3, &flags) < 0){
+                return -1;
+        }
+
+	uint oldaddr_end = oldaddr + oldsize;
+        uint newaddr_end = oldaddr + newsize;
+
+	for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+		// check if space is available for mapping to grow in place
+		if (currproc->wmaps[i] && (currproc->wmaps[i]->addr >= oldaddr_end) && (currproc->wmaps[i]->addr <= newaddr_end)) {
+			grow_in_place = 0; // space unavailable
+		}
+		// check if newaddr is between 0 and KERNBASE
+		if (newaddr_end >= KERNBASE) {
+			grow_in_place = 0; // exceeds KERNBASE
+		}
+
+		if (currproc->wmaps[i] && (currproc->wmaps[i]->addr == oldaddr) && (currproc->wmaps[i]->size == oldsize)) {
+			// growing
+			if (newsize > oldsize) { 
+				if (grow_in_place) {
+					currproc->wmaps[i]->size = newsize;
+					currproc->wmaps[i]->pages = (newsize / 4096) + (newsize % 4096 > 0);
+					return oldaddr;
+				}
+				else if (flags & MREMAP_MAYMOVE) {
+					uint newaddr = new_addr(currproc, newsize);
+					if (newaddr == 0) {
+						//return -1; // no free space found
+						return FAILED;
+					} else {
+						currproc->wmaps[i]->addr = newaddr;
+						currproc->wmaps[i]->size = newsize;
+                                        	currproc->wmaps[i]->pages = (newsize / 4096) + (newsize % 4096 > 0);
+						return newaddr;
+					}
+				} else {
+				return FAILED;
+				}
+			// shrinking
+			} else if (newsize < oldsize) {
+				currproc->wmaps[i]->size = newsize;
+				currproc->wmaps[i]->pages = (newsize / 4096) + (newsize % 4096 > 0);
+				return oldaddr;
+			}
+		}
+	}
+	return FAILED;
 }

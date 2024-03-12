@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "wmap.h"
 
 struct {
   struct spinlock lock;
@@ -212,6 +213,53 @@ fork(void)
 
   pid = np->pid;
 
+  // modify fork
+  for (i = 0; i < MAX_WMAP; i++) {
+    if (curproc->wmaps[i]) {
+      if (curproc->wmaps[i]->mapshared == 1) { // mapshared
+	struct map *sharedmap = mapalloc();
+	if (sharedmap == 0) {
+          cprintf("fork map alloc failed\n");
+          return -1;
+        }
+
+	*sharedmap = *(curproc->wmaps[i]);
+	uint addr; // va
+	for (addr = sharedmap->addr; addr < sharedmap->addr + sharedmap->size; addr += 4096) {
+	  pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+	  if (pte && (*pte & PTE_P)) {
+	    uint pa = PTE_ADDR(*pte);
+	    mappages(np->pgdir, (void *) addr, 4096, pa, PTE_W | PTE_U);
+	  }
+	}
+        np->wmaps[i] = sharedmap;
+      } else { // private
+        struct map *privatemap = mapalloc();
+	if (privatemap == 0) {
+	  cprintf("fok map alloc failed\n");
+	  return -1;
+	}
+
+	*privatemap = *(curproc->wmaps[i]);
+	uint addr;
+	for (addr = privatemap->addr; addr < privatemap->addr + privatemap->size; addr += 4096) {
+	  pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+	  if (pte && (*pte & PTE_P)) {
+	    uint pa = PTE_ADDR(*pte);
+	    uint flags = PTE_FLAGS(*pte) & ~PTE_W; // remove write
+	    mappages(np->pgdir, (void *) addr, 4096, pa, flags);
+	  }
+	}
+	np->wmaps[i] = privatemap;
+      }
+    }
+
+  }
+
+  // end of fork modifications
+
+
+
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
@@ -230,6 +278,14 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+
+  // modify exit
+  for (int i = 0; i < MAX_WMAP; i++) {
+    if (curproc->wmaps[i] && curproc->wmaps[i]->used) {
+      unmap(curproc->wmaps[i]);
+    }
+  }
+
 
   if(curproc == initproc)
     panic("init exiting");
