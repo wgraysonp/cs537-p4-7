@@ -149,7 +149,7 @@ int sys_getwmapinfo(void) {
 	// count used mappings
 	int count = 0;
 	for (int i = 0; i < MAX_WMMAP_INFO; i++) {
-		if (currproc->wmaps[i] && currproc->wmaps[i]->used) {
+		if ( currproc->wmaps[i] && currproc->wmaps[i]->used) {
 			wminfo->addr[count] = currproc->wmaps[i]->addr;
 			wminfo->length[count] = currproc->wmaps[i]->size;
 			wminfo->n_loaded_pages[count] = currproc->wmaps[i]->n_alloc_pages;
@@ -165,17 +165,41 @@ int sys_getwmapinfo(void) {
 // used in sys_wremap for finding new location
 uint new_addr(struct proc *currproc, int newsize) {
 	uint base = 0x60000000;
-	for (int i = 0; i < MAX_WMMAP_INFO; i++) {
-		// check if newsize fits in free space before next mapping
-		if ((base + newsize <= currproc->wmaps[i]->addr) && (base + newsize <= KERNBASE)) {
-			return base; // free space found
+	uint offset;
+	uint curr;
+	while (base < KERNBASE) {
+		if (ismapped(base) == -1){
+			base += 4096;
 		} else {
-			base = currproc->wmaps[i]->addr + currproc->wmaps[i]->size; // move to next free space
+			offset = 4096;
+			curr = base + offset;
+			while (offset < newsize && curr < KERNBASE && ismapped(curr) == 0){
+				offset += 4096;
+				curr+=4096;
+			}
+			if (offset >= newsize && curr <= KERNBASE){
+				return base;
+			} else {
+				base = curr;
+			}
+
 		}
 	}
-	if (base + newsize <= KERNBASE) {
-		return base;
-	}
+	//for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+		// check if newsize fits in free space before next mapping
+	//	if (currproc->wmaps[i] == 0){
+	//		continue;
+	//	} else if ((base + newsize <= currproc->wmaps[i]->addr) && (base + newsize <= KERNBASE)) {
+	//		return base; // free space found
+	//	} else {
+	//		base = currproc->wmaps[i]->addr + currproc->wmaps[i]->size; // move to next free space
+	//		cprintf("addr: 0x%x\n", currproc->wmaps[i]->addr);
+	//	}
+//	}
+//	if (base + newsize <= KERNBASE) {
+//		cprintf("base : 0x%x\n", base);
+//		return base;
+//	}
 	return 0; // free space not found
 } 
 
@@ -222,16 +246,26 @@ int sys_wremap(void) {
                                                 currproc->wmaps[i]->addr = newaddr;
                                                 currproc->wmaps[i]->size = newsize;
                                                 currproc->wmaps[i]->pages = (newsize / 4096) + (newsize % 4096 > 0);
-/**                             for (uint j = oldaddr; j < oldaddr_end; j += 4096) {
-                                        pte_t *pte = walkpgdir(currproc->pgdir,(void *)j, 0);
-                                        if (pte && (*pte & PTE_P)) {
-                                                char *page = P2V(PTE_ADDR(*pte));
-                                                kfree(page);
-                                                *pte = 0;
-                                        }
-                                }
-                                // debugging end
-*/
+						uint curr_addr = newaddr;
+		                             for (uint j = oldaddr; j < oldaddr_end; j += 4096) {
+                        	                pte_t *pte = walkpgdir(currproc->pgdir,(void *)j, 0);
+                	                        if (pte && (*pte & PTE_P)) {
+							uint pa = PTE_ADDR(*pte);
+                                      	          	char *page = P2V(PTE_ADDR(*pte));
+							char *mem = kalloc();
+							uint flags = PTE_FLAGS(*pte);
+							memmove(mem, (char*)P2V(pa), 4096);
+							mappages(myproc()->pgdir, (void*)curr_addr, 4096, V2P(mem), flags);
+                                        	        kfree(page);
+                                        	}
+						*pte = 0;
+						curr_addr += 4096;
+
+                                	     }
+                                	// debugging end
+						cprintf("newaddr: 0x%x\n", newaddr);
+						cprintf("oldaddr: 0x%x\n", oldaddr);
+
                                                 return newaddr;
                                         }
                                 } else {
