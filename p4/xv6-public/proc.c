@@ -214,6 +214,7 @@ fork(void)
   pid = np->pid;
 
   // modify fork
+  
   for (i = 0; i < MAX_WMAP; i++) {
     if (curproc->wmaps[i]) {
       if (curproc->wmaps[i]->mapshared == 1) { // mapshared
@@ -236,18 +237,23 @@ fork(void)
       } else { // private
         struct map *privatemap = mapalloc();
 	if (privatemap == 0) {
-	  cprintf("fok map alloc failed\n");
+	  cprintf("fork map alloc failed\n");
 	  return -1;
 	}
 
 	*privatemap = *(curproc->wmaps[i]);
 	uint addr;
+	char* mem; //WP
 	for (addr = privatemap->addr; addr < privatemap->addr + privatemap->size; addr += 4096) {
 	  pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
 	  if (pte && (*pte & PTE_P)) {
 	    uint pa = PTE_ADDR(*pte);
-	    uint flags = PTE_FLAGS(*pte) & ~PTE_W; // remove write
-	    mappages(np->pgdir, (void *) addr, 4096, pa, flags);
+	    mem = kalloc();
+	    //uint flags = PTE_FLAGS(*pte) ~PTE_W // remove write
+	    uint flags = PTE_FLAGS(*pte);
+	    //mappages(np->pgdir, (void *) addr, 4096, pa, flags);
+	    memmove(mem, (char*)P2V(pa), 4096); 
+	    mappages(np->pgdir, (void*)addr, 4096, V2P(mem), flags); //WP
 	  }
 	}
 	np->wmaps[i] = privatemap;
@@ -282,8 +288,17 @@ exit(void)
   // modify exit
   for (int i = 0; i < MAX_WMAP; i++) {
     if (curproc->wmaps[i] && curproc->wmaps[i]->used) {
-      unmap(curproc->wmaps[i]);
+      //unmap(curproc->wmaps[i]);
+      	uint addr = curproc->wmaps[i]->addr;
+	int size = curproc->wmaps[i]->size;
+	pte_t *pte;
+ 	for (uint a = addr; a < addr + size; a+=4096){
+		pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+	       	*pte = 0;
+	}	
+      curproc->wmaps[i] = 0; //WP
     }
+
   }
 
 
