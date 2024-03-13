@@ -93,6 +93,7 @@ void 		mapinit(void);
 struct map*     mapalloc(void);
 int             unmap(struct map *m);
 uint 		get_addr(int new_addr, int num_pages,  int flags);
+int 		ismapped(uint addr);
 
 // mp.c
 extern int      ismp;
