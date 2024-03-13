@@ -65,6 +65,7 @@ int sys_wmap(void){
 			new_map->fd = -1;
 			new_map->n_alloc_pages = 0;
 			new_map->size = length;
+			new_map->cpid = curproc->pid;
 			if (flags & MAP_SHARED){
 				new_map->mapshared = 1;
 			}

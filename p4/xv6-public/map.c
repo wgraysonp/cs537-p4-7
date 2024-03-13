@@ -50,36 +50,43 @@ int unmap(struct map *m){
 		f = 0;
 	}
 
-	for (int i = 0; i < m->pages; i++){
-		addr = m->addr + 4096*i;
-		pte = walkpgdir(myproc()->pgdir, (void*)addr, 0);
+	cprintf("here\n");
 
-		if (f && m->mapshared == 1 && (*pte & PTE_P)){
-                        f->off = 4096*i;
-			if (f->ip->size - f->off > 4096){
-				write_length = 4096;
-			} else {
-				write_length = f->ip->size - f->off;
-			}
+		for (int i = 0; i < m->pages; i++){
+			addr = m->addr + 4096*i;
+			pte = walkpgdir(myproc()->pgdir, (void*)addr, 0);
 
-			if ((write_suc = filewrite(f, (char*)addr, write_length)) < 0){
-				return -1;
+			if (f && m->mapshared == 1 && (*pte & PTE_P)){
+                        	f->off = 4096*i;
+				if (f->ip->size - f->off > 4096){
+					write_length = 4096;
+				} else {
+					write_length = f->ip->size - f->off;
+				}
+
+				if ((write_suc = filewrite(f, (char*)addr, write_length)) < 0){
+					return -1;
+				}
+                	}
+			if (*pte != 0){
+      				char *pa = P2V(PTE_ADDR(*pte));
+				if ((m->mapshared == 1 && m->cpid == myproc()->pid) || m->mapshared == 0)
+					kfree(pa);
+				*pte = 0;
 			}
-                }
-		if (*pte != 0){
-      			char *pa = P2V(PTE_ADDR(*pte));
-			kfree(pa);
-			*pte = 0;
 		}
-	}	
 
-	m->used = 0;
-	m->addr = 0;
-	m->pages = 0;
-	m->size = 0;
-	m->n_alloc_pages = 0;
-	m->mapshared = 0;
-	m->fd = 0;
+	if ((m->mapshared == 1 && m->cpid == myproc()->pid) || m->mapshared == 0){
+		acquire(&maptable.lock);
+		m->used = 0;
+		m->addr = 0;
+		m->pages = 0;
+		m->size = 0;
+		m->n_alloc_pages = 0;
+		m->mapshared = 0;
+		m->fd = 0;
+		release(&maptable.lock);
+	}
 
 	return 0;
 }
