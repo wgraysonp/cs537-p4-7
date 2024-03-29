@@ -93,6 +93,7 @@ found:
   p->nclone = 0;
   p->sleepticks = -1;
   p->chan = 0;
+  p->nice = 0;
 
   release(&ptable.lock);
 
@@ -396,15 +397,26 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
+  int min_nice;
   
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
+    min_nice = 19;
+
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+	
+    // find lowest niceness value among runnable processes
+    for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
+	    if (p->state == RUNNABLE && p->nice < min_nice){
+		   min_nice = p->nice;
+	    }
+    } 
+
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+      if(p->state != RUNNABLE || p->nice > min_nice)
         continue;
 
       // Switch to chosen process.  It is the process's job
