@@ -26,6 +26,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int clone(void (*)(void*), void*, void*);
+int nice(int inc);
 int macquire(mutex* m);
 int mrelease(mutex* m);
 
@@ -42,3 +43,4 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+void minit(mutex *m);
