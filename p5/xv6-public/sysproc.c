@@ -136,7 +136,7 @@ int sys_nice(void)
 int
 sys_macquire(void)
 {
-  struct mutex *m;
+  mutex *m;
   if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
     return -1; // mutex was not retrieved
   }
@@ -155,7 +155,7 @@ sys_macquire(void)
 int 
 sys_mrelease(void)
 {
-  struct mutex *m;
+  mutex *m;
   if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
     return -1; // mutex was not retrieved
   } 
