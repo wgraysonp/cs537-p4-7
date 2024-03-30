@@ -104,7 +104,12 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_clone(void);
+<<<<<<< HEAD
 extern int sys_nice(void);
+=======
+extern int sys_macquire(void);
+extern int sys_mrelease(void);
+>>>>>>> main
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -130,6 +135,8 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_clone]   sys_clone,
 [SYS_nice]    sys_nice,
+[SYS_macquire] sys_macquire,
+[SYS_mrelease] sys_mrelease,
 };
 
 void

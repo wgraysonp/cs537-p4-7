@@ -1,6 +1,8 @@
 struct stat;
 struct rtcdate;
 
+#include "mutex.h"
+
 // system calls
 int fork(void);
 int exit(void) __attribute__((noreturn));
@@ -25,6 +27,8 @@ int sleep(int);
 int uptime(void);
 int clone(void (*)(void*), void*, void*);
 int nice(int inc);
+int macquire(mutex* m);
+int mrelease(mutex* m);
 
 // ulib.c
 int stat(const char*, struct stat*);

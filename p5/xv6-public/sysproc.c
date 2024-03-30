@@ -6,6 +6,15 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "mutex.h"
+
+// spinlock
+struct spinlock mutexlock;
+void
+initmutexlock(void)
+{
+  initlock(&mutexlock, "mutexlock");
+}
 
 int
 sys_fork(void)
@@ -105,6 +114,8 @@ sys_uptime(void)
   return xticks;
 }
 
+// new system calls
+
 int sys_nice(void)
 {
 	int inc;
@@ -119,6 +130,42 @@ int sys_nice(void)
 	}
 	myproc()->nice = inc;
 	return 0;
+}
+
+
+int
+sys_macquire(void)
+{
+  struct mutex *m;
+  if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
+    return -1; // mutex was not retrieved
+  }
+
+  acquire(&mutexlock);
+  while (m->locked) {
+    sleep(m, &mutexlock);
+  }
+  m->locked = 1;
+  m->pid = myproc()->pid;
+  release(&mutexlock);
+
+  return 0;
+}
+
+int 
+sys_mrelease(void)
+{
+  struct mutex *m;
+  if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
+    return -1; // mutex was not retrieved
+  } 
+  acquire(&mutexlock);
+  m->locked = 0;
+  m->pid = 0;
+  wakeup(m);
+  release(&mutexlock);
+
+  return 0;
 }
 
 
