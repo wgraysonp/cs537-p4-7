@@ -7,3 +7,5 @@ typedef struct {
   int pid; // process holding lock
 } mutex;
 
+void elevpriority(mutex *m);
+

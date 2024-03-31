@@ -129,6 +129,7 @@ int sys_nice(void)
 		inc = -20;
 	}
 	myproc()->nice = inc;
+	myproc()->base_nice = inc;
 	return 0;
 }
 
@@ -137,11 +138,13 @@ int
 sys_macquire(void)
 {
   mutex *m;
+  cprintf("here\n");
   if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
     return -1; // mutex was not retrieved
   }
 
   acquire(&mutexlock);
+  elevpriority(m); // maybe put this in the loop if theres a problem with test 12
   while (m->locked) {
     sleep(m, &mutexlock);
   }
@@ -162,6 +165,7 @@ sys_mrelease(void)
   acquire(&mutexlock);
   m->locked = 0;
   m->pid = 0;
+  myproc()->nice = myproc()->base_nice;
   wakeup(m);
   release(&mutexlock);
 

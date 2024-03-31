@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "mutex.h"
 
 Ptable ptable;
 
@@ -94,6 +95,7 @@ found:
   p->sleepticks = -1;
   p->chan = 0;
   p->nice = 0;
+  p->base_nice = 0;
 
   release(&ptable.lock);
 
@@ -624,4 +626,19 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+// elevate priority of process holding mutex lock to that of calling process
+// for priority inversion
+void elevpriority(mutex *m){
+ struct proc *p;
+ acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+          if (m->pid == p->pid && p->nice > myproc()->nice){
+                  p->nice = myproc()->nice;
+          }
+  }
+  release(&ptable.lock);
+
 }
