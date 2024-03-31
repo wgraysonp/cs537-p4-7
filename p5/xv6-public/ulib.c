@@ -110,4 +110,7 @@ minit(mutex *m)
 {
   m->locked = 0;
   m->pid = 0;
+  for (int i = 0; i < 39; i++){
+	  m->sleeping_nice[i] = 0;
+  }
 }
