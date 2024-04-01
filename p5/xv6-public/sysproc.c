@@ -138,7 +138,6 @@ int
 sys_macquire(void)
 {
   mutex *m;
-  cprintf("here\n");
   if(argptr(0, (char**)&m, sizeof(*m)) < 0) {
     return -1; // mutex was not retrieved
   }
