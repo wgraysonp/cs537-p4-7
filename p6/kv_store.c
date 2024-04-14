@@ -24,7 +24,6 @@
 
 struct thread_context {
 	int tid;
-	int win_size;
 };
 
 hash_t *Htable = NULL;
@@ -128,6 +127,45 @@ void init_server(){
 	ring = (struct ring *)mem;
 }
 
+void process_reqs(){
+	struct buffer_descriptor bd;
+	value_type v;
+
+	memset(&bd, 0, sizeof(struct buffer_descriptor));
+	ring_get(ring, &bd);
+	struct buffer_descriptor *res = (struct buffer_descriptor*)(shmem_area + bd.res_off);
+
+	if (bd.req_type == PUT){
+		put(bd.k, bd.v);
+		res->ready = READY;
+	} else {
+		if ((v = get(bd.k)) == -1){
+			printf("get failed\n");
+			exit(1);
+		}
+		res->v = v;
+		res->ready = READY;
+	}
+
+}
+
+void *thread_function(void *arg){
+	struct thread_context *ctx = arg;
+	printf("Thread ID: %di\n", ctx->tid);
+	while(true){
+		process_reqs();
+	}
+}
+
+
+void start_threads(){
+	for (int i = 0; i < num_threads; i++){
+		contexts[i].tid = i;
+		if (pthread_create(&threads[i], NULL, &thread_function, &contexts[i]))
+			perror("pthread_create");
+	}
+
+}
 
 
 void wait_for_threads(){
@@ -164,8 +202,8 @@ int main(int argc, char* argv[]){
 	Hash_Init(num_threads, &Htable);
 
 	init_server();
-	put(1, 1);
-	get(1);
+	start_threads();
+	wait_for_threads();
 
 	return 0;
 }
