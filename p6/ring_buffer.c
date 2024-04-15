@@ -7,6 +7,7 @@
 #include "kv_store.h"
 #include "common.h"
 
+
 /*
  * Initialize the ring
  * @param r A pointer to the ring
@@ -67,10 +68,11 @@ void ring_get(struct ring *r, struct buffer_descriptor *bd) {
 	r->c_tail = r->c_head;
 	pthread_mutex_unlock(&r->mutex);
 
+	/*
 	if (bd->req_type == PUT) {
 		int putval = put(bd->k, bd->v);
 	}
 	if (bd->req_type == GET) {
 		int getval = get(bd->k);
-	}
+	} */
 }
