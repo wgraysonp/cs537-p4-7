@@ -16,3 +16,9 @@ typedef struct __hash_t {
 	int size;
 	list_t *lists;
 } hash_t;
+
+
+// used in ring_buffer.c
+int put(key_type k, value_type v);
+int get(key_type k);
+

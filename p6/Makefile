@@ -5,7 +5,7 @@ override CFLAGS += -c -g
 override LDFLAGS += -lpthread
 SERVER_OBJS = kv_store.o ring_buffer.o
 CLIENT_OBJS = client.o ring_buffer.o
-HEADERS = common.h
+HEADERS = common.h kv_store.h ring_buffer.h
 
 .PHONY: all, clean
 all: client server
