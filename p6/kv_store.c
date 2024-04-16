@@ -76,6 +76,8 @@ int List_Lookup(list_t *L, key_type key){
 }
 
 void Hash_Init(int s, hash_t **H) {
+
+	printf("Initializing hash table\n");
 	
 	hash_t *ht;
 
@@ -131,21 +133,24 @@ void process_reqs(){
 	struct buffer_descriptor bd;
 	value_type v;
 
+	printf("processing reqs\n");
+
 	memset(&bd, 0, sizeof(struct buffer_descriptor));
 	ring_get(ring, &bd);
 	struct buffer_descriptor *res = (struct buffer_descriptor*)(shmem_area + bd.res_off);
-
+	printf("after get\n");
 	if (bd.req_type == PUT){
 		put(bd.k, bd.v);
-		res->ready = READY;
+		bd.ready = READY;
 	} else {
 		if ((v = get(bd.k)) == -1){
 			printf("get failed\n");
 			exit(1);
 		}
-		res->v = v;
-		res->ready = READY;
+		bd.v = v;
+		bd.ready = READY;
 	}
+	memcpy(res, &bd, sizeof(struct buffer_descriptor));
 
 }
 
@@ -155,10 +160,13 @@ void *thread_function(void *arg){
 	while(true){
 		process_reqs();
 	}
+
+	printf("out of loop");
 }
 
 
 void start_threads(){
+	printf("STARTING SERVER THREADS\n");
 	for (int i = 0; i < num_threads; i++){
 		contexts[i].tid = i;
 		if (pthread_create(&threads[i], NULL, &thread_function, &contexts[i]))
@@ -193,6 +201,7 @@ int parse_args(int argc, char**argv){
 	      	       
 
 int main(int argc, char* argv[]){
+	printf("IN MAIN");
 
 	if (parse_args(argc, argv) != 0){
 		exit(1);
