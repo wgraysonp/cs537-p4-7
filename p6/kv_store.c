@@ -76,8 +76,6 @@ int List_Lookup(list_t *L, key_type key){
 }
 
 void Hash_Init(int s, hash_t **H) {
-
-	printf("Initializing hash table\n");
 	
 	hash_t *ht;
 
@@ -133,21 +131,21 @@ void process_reqs(){
 	struct buffer_descriptor bd;
 	value_type v;
 
-	printf("processing reqs\n");
-
 	memset(&bd, 0, sizeof(struct buffer_descriptor));
 	ring_get(ring, &bd);
 	struct buffer_descriptor *res = (struct buffer_descriptor*)(shmem_area + bd.res_off);
-	printf("after get\n");
 	if (bd.req_type == PUT){
+		printf("Server: put key %d val %u\n", bd.k, bd.v);
 		put(bd.k, bd.v);
 		bd.ready = READY;
 	} else {
 		if ((v = get(bd.k)) == -1){
-			printf("get failed\n");
-			exit(1);
+			printf("Server: key %d\n not found", bd.k);
+			bd.v = 0;
+		} else {
+			printf("Server: key %d found. Returning value %u\n", bd.k, bd.v);
+			bd.v = v;
 		}
-		bd.v = v;
 		bd.ready = READY;
 	}
 	memcpy(res, &bd, sizeof(struct buffer_descriptor));
@@ -156,12 +154,10 @@ void process_reqs(){
 
 void *thread_function(void *arg){
 	struct thread_context *ctx = arg;
-	printf("Thread ID: %di\n", ctx->tid);
 	while(true){
 		process_reqs();
+		printf("looping\n");
 	}
-
-	printf("out of loop");
 }
 
 
@@ -201,12 +197,10 @@ int parse_args(int argc, char**argv){
 	      	       
 
 int main(int argc, char* argv[]){
-	printf("IN MAIN");
 
 	if (parse_args(argc, argv) != 0){
 		exit(1);
 	}
-	printf("num threads: %d\n", num_threads);
 
 	Hash_Init(num_threads, &Htable);
 
