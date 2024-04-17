@@ -135,15 +135,12 @@ void process_reqs(){
 	ring_get(ring, &bd);
 	struct buffer_descriptor *res = (struct buffer_descriptor*)(shmem_area + bd.res_off);
 	if (bd.req_type == PUT){
-		printf("Server: put key %d val %u\n", bd.k, bd.v);
 		put(bd.k, bd.v);
 		bd.ready = READY;
 	} else {
 		if ((v = get(bd.k)) == -1){
-			printf("Server: key %d\n not found", bd.k);
 			bd.v = 0;
 		} else {
-			printf("Server: key %d found. Returning value %u\n", bd.k, bd.v);
 			bd.v = v;
 		}
 		bd.ready = READY;
@@ -156,13 +153,11 @@ void *thread_function(void *arg){
 	struct thread_context *ctx = arg;
 	while(true){
 		process_reqs();
-		printf("looping\n");
 	}
 }
 
 
 void start_threads(){
-	printf("STARTING SERVER THREADS\n");
 	for (int i = 0; i < num_threads; i++){
 		contexts[i].tid = i;
 		if (pthread_create(&threads[i], NULL, &thread_function, &contexts[i]))
@@ -202,7 +197,7 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 
-	Hash_Init(num_threads, &Htable);
+	Hash_Init(init_table_size, &Htable);
 
 	init_server();
 	start_threads();
