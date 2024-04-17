@@ -7,7 +7,6 @@
 #include "kv_store.h"
 #include "common.h"
 
-
 /*
  * Initialize the ring
  * @param r A pointer to the ring
@@ -19,7 +18,10 @@ int init_ring(struct ring *r) {
 	r->p_tail = 0;
 	r->c_head = 0;
 	r->c_tail = 0;
-	if (pthread_mutex_init(&r->mutex, NULL) != 0) {
+	if (pthread_mutex_init(&r->get_lock, NULL) != 0) {
+		return -1;
+	}
+	if (pthread_mutex_init(&r->submit_lock, NULL) != 0){
 		return -1;
 	}
 }
@@ -32,19 +34,19 @@ int init_ring(struct ring *r) {
  * guaranteed to be valid during the invocation of the function
 */
 void ring_submit(struct ring *r, struct buffer_descriptor *bd) {
-	pthread_mutex_lock(&r->mutex);
+	pthread_mutex_lock(&r->submit_lock);
 	uint32_t next = (r->p_head + 1) % 1024;
 	while (next == r->c_tail) {
-		pthread_mutex_unlock(&r->mutex);
-		// reacquire mutex and check for space
-		pthread_mutex_lock(&r->mutex);
+	//	pthread_mutex_unlock(&r->submit_lock);
+		// reacuire lock
+	//	pthread_mutex_lock(&r->submit_lock);
 		next = (r->p_head + 1) % 1024;
 	}
 
 	r->buffer[r->p_head] = *bd;
 	r->p_head = next;
 	r->p_tail = r->p_head;
-	pthread_mutex_unlock(&r->mutex);
+	pthread_mutex_unlock(&r->submit_lock);
 }
 
 /*
@@ -56,23 +58,15 @@ void ring_submit(struct ring *r, struct buffer_descriptor *bd) {
  * the signature.
 */
 void ring_get(struct ring *r, struct buffer_descriptor *bd) {
-	pthread_mutex_lock(&r->mutex);
+	pthread_mutex_lock(&r->get_lock);
 	uint32_t next = (r->c_head + 1) % 1024;
 	while (r->c_head == r->p_tail) {
-		pthread_mutex_unlock(&r->mutex);
+		//pthread_mutex_unlock(&r->get_lock);
 		// reacquire mutex and check for space
-                pthread_mutex_lock(&r->mutex);
+                //pthread_mutex_lock(&r->get_lock);
 	}
 	*bd = r->buffer[r->c_head]; 
 	r->c_head = next;
 	r->c_tail = r->c_head;
-	pthread_mutex_unlock(&r->mutex);
-
-	/*
-	if (bd->req_type == PUT) {
-		int putval = put(bd->k, bd->v);
-	}
-	if (bd->req_type == GET) {
-		int getval = get(bd->k);
-	} */
+	pthread_mutex_unlock(&r->get_lock);
 }

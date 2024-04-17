@@ -54,7 +54,8 @@ struct __attribute__((packed, aligned(64))) ring {
 	/* An array of structs - This is the actual ring */
 	struct buffer_descriptor buffer[RING_SIZE];
 	// added a lock for ring
-	pthread_mutex_t mutex;
+	pthread_mutex_t get_lock;
+	pthread_mutex_t submit_lock;
 };
 
 /*
