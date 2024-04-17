@@ -37,9 +37,9 @@ void ring_submit(struct ring *r, struct buffer_descriptor *bd) {
 	pthread_mutex_lock(&r->mutex);
 	uint32_t next = (r->p_head + 1) % 1024;
 	while (next == r->c_tail) {
-		pthread_mutex_unlock(&r->mutex);
+		//pthread_mutex_unlock(&r->mutex);
 		// reacquire mutex and check for space
-		pthread_mutex_lock(&r->mutex);
+		//pthread_mutex_lock(&r->mutex);
 		next = (r->p_head + 1) % 1024;
 	}
 
@@ -61,9 +61,9 @@ void ring_get(struct ring *r, struct buffer_descriptor *bd) {
 	pthread_mutex_lock(&r->get_mutex);
 	uint32_t next = (r->c_head + 1) % 1024;
 	while (r->c_head == r->p_tail) {
-		pthread_mutex_unlock(&r->get_mutex);
+		//pthread_mutex_unlock(&r->get_mutex);
 		// reacquire mutex and check for space
-                pthread_mutex_lock(&r->get_mutex);
+               // pthread_mutex_lock(&r->get_mutex);
 	}
 	*bd = r->buffer[r->c_head]; 
 	r->c_head = next;
