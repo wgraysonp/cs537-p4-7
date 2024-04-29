@@ -1,27 +1,17 @@
 #include <stdio.h>
+#include "wfs.h"
 #include <fuse.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
-#include "wfs.h"
 
 char *disk_image = NULL;
 struct wfs_sb *super_block;
-
-static struct fuse_operations ops = {
-  .getattr = wfs_getattr,
-  .mknod   = wfs_mknod,
-  .mkdir   = wfs_mkdir,
-  .unlink  = wfs_unlink,
-  .rmdir   = wfs_rmdir,
-  .read    = wfs_read,
-  .write   = wfs_write,
-  .readdir = wfs_readdir,
-};
 
 
 /*
@@ -29,16 +19,16 @@ static struct fuse_operations ops = {
  * number on success or -1 on failure
  */
 int alloc_inode(){
-	uint32_t curr_bits;
-	uint32_t check_bit;
+	int curr_bits;
+	int check_bit;
 	int inode_num = 0;
 
-	char *ptr = super_block->i_bitmap_ptr;
-	while (ptr < super_block->d_bitmap_ptr){
+	char *ptr = (char *)super_block->i_bitmap_ptr;
+	while ((off_t)ptr < super_block->d_bitmap_ptr){
 		curr_bits = *ptr;
 		check_bit = 1;
 		for (int i =0; i < 8; i++){
-			check_bit << i;
+			check_bit <<= 1;
 			if (!(check_bit && curr_bits)){
 				return inode_num;
 			}
@@ -60,12 +50,12 @@ int alloc_dblock(){
 	uint32_t check_bit;
 	int dblock_num = 0;
 
-	char *ptr = super_block->d_bitmap_ptr;
-	while(ptr < super_block->i_blocks_ptr){
+	char *ptr = (char*)super_block->d_bitmap_ptr;
+	while((off_t)ptr < super_block->i_blocks_ptr){
 		curr_bits = *ptr;
 		check_bit = 1;
 		for (int i = 0; i < 8; i++){
-			check_bit << i;
+			check_bit <<= i;
 			if (!(check_bit && curr_bits)){
 				return dblock_num;
 			}
@@ -88,16 +78,18 @@ int get_inode(const char *path, struct wfs_inode *inode){
 	int inode_num = 0;
 	int found = 0;
 	struct wfs_dentry *dir;
-	inode = super_block;
-	char *token = strtock(path, &delim);
+	inode = (struct wfs_inode*)super_block->i_blocks_ptr;
+	char *path_copy = (char*)malloc((strlen(path)+1)*sizeof(char));
+	strcpy(path_copy, path);
+	char *token = strtok(path_copy, &delim);
 	uint32_t bitcheck = 1;
-	int valid_bit_loc = 0;
+	char* valid_bit_loc = NULL;
 
 	inode->atim = time(NULL);
 
 	// move past the root directory
-	if (strcmp(token, "")==0 || strcmp(toke, ".") == 0){
-		token = strtock(NULL, &delim);
+	if (strcmp(token, "")==0 || strcmp(token, ".") == 0){
+		token = strtok(NULL, &delim);
 	}
 
 	while(token != NULL){
@@ -105,7 +97,7 @@ int get_inode(const char *path, struct wfs_inode *inode){
 			found = 0;
 			for (int i = 0; i < IND_BLOCK; i++){
 				for (int j = 0; j < 512; j+= 32){
-					int data_loc = disk_image + inode->blocks[i] + j;
+					off_t data_loc = (off_t)disk_image + inode->blocks[i] + j;
 					dir = (struct wfs_dentry*)data_loc;
 					if (strcmp(dir->name, token) == 0){
 						inode_num = dir->num;
@@ -113,30 +105,33 @@ int get_inode(const char *path, struct wfs_inode *inode){
 						break;
 					}
 				}
-				if (found = 1)
+				if (found == 1)
 					break;
 			}
 
 			if (found == 0){
+				free(path_copy);
 				// made it through the loop without finding the entry
-				return -1
+				return -1;
 			}
 		} else {
+			free(path_copy);
 			// made it to a file before the end of the given path
 			// so the path is invalid
 			return -1;
 		}
-
-		inode = (struct wfs_inode)(super_block->i_blocks_ptr + inode_num*sizeof(struct wfs_inode));
+		inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*sizeof(struct wfs_inode));
 		bitcheck = bitcheck << (inode_num % 8);
-		valid_bit_loc = inode_num/8 + super_block->i_bitmap_ptr;
+		valid_bit_loc = (char*)(inode_num/8 + super_block->i_bitmap_ptr);
 		if (!(bitcheck && (uint32_t)*valid_bit_loc)){
 			return -1;
 		}
 		inode->atim = time(NULL);
-		token = strtock(NULL, &delim);
+		token = strtok(NULL, &delim);
 
 	}
+
+	free(path_copy);
 
 	return 0;
 
@@ -144,7 +139,7 @@ int get_inode(const char *path, struct wfs_inode *inode){
 
 static int wfs_getattr(const char *path, struct stat *stbuf){
 
-	struct wfs_inode *inode;
+	struct wfs_inode *inode = NULL;
 	
 	if (get_inode(path, inode) == -1){
 		return ENOENT;
@@ -163,15 +158,21 @@ static int wfs_getattr(const char *path, struct stat *stbuf){
 
 }
 
-static int wfs_mknod(const char *path, mode_t mode){
+
+static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
+
+	char* path_copy = malloc((strlen(path)+1)*sizeof(char));
+	strcpy(path_copy, path);
 
 	int inode_num;
 	if ((inode_num = alloc_inode()) == -1){
+		free(path_copy);
 		return ENOSPC;
 	}
 
-	struct wfs_inode *inode;
-	if (get_inode(path, inode) != -1){
+	struct wfs_inode *inode = NULL;
+	if (get_inode(path_copy, inode) != -1){
+		free(path_copy);
 		return EEXIST;
 	}
 
@@ -188,47 +189,55 @@ static int wfs_mknod(const char *path, mode_t mode){
 
 	int dblock_num;
 	if ((dblock_num = alloc_dblock()) == -1){
+		free(path_copy);
 		return ENOSPC;
 	} 
 
-	char *f_name = path[strlen(path)-1];
+	char *f_name = &path_copy[strlen(path)-1];
 
-        while(*f_name != '\'){
+        while(*f_name != '\''){
                 f_name--;
         }
         *f_name = '\0';
         f_name++;
 
 
-        struct wfs_inode *parent;
-        if (get_inode(path, parent) == -1){
+        struct wfs_inode *parent = NULL;
+        if (get_inode(path_copy, parent) == -1){
+		free(path_copy);
 		return ENOENT;
 	}
 
 	struct wfs_dentry *dentry;
 
 	if (parent->size >= 512*7){
+		free(path_copy);
 		return ENOSPC;
 	} else if (parent->size % 512 == 0){
 		int dblock_num;
 		if ((dblock_num = alloc_dblock()) == -1){
+			free(path_copy);
 			return ENOSPC;
 		}
 		parent->blocks[parent->size/512] = dblock_num;
-		dentry = (struct wfs_dentry)(super_block->d_blocks_ptr + dblock_num*BLOCK_SIZE);
+		dentry = (struct wfs_dentry*)(super_block->d_blocks_ptr + dblock_num*BLOCK_SIZE);
 		strcpy(dentry->name, f_name);
 		dentry->num = inode_num;
 	} else {
-		int block_offset = parent->size % BLOCK_SIZE;
+		off_t block_offset = parent->size % BLOCK_SIZE;
 		int insert_block = parent->size / BLOCK_SIZE;
-		int block_start = parent->blocks[insert_block]*BLOCK_SIZE + super_block->dblocks_ptr;
-		dentry = (struct wfs_dentry)(block_start + block_offset);
+		off_t block_start = parent->blocks[insert_block]*BLOCK_SIZE + super_block->d_blocks_ptr;
+		dentry = (struct wfs_dentry*)(block_start + block_offset);
 		strcpy(dentry->name, f_name);
 		dentry->num = inode_num;
 	}
+
+	free(path_copy);
 	
 	return 0;
 }
+
+
 
 
 void init_disk(char *f_name){
@@ -247,6 +256,14 @@ void init_disk(char *f_name){
 	super_block = (struct wfs_sb *)mem;
 	
 }
+
+// add functions to this struct as they are completed. 
+// the code wont compile if its in the struct but not defined
+// elsewhere
+static struct fuse_operations ops = {
+  .getattr = wfs_getattr,
+  .mknod   = wfs_mknod,
+};
 
 int main (int argc, char *argv[]){
 

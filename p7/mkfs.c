@@ -1,11 +1,14 @@
+#define _FILE_OFFSET_BITS 64
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include "wfs.h"
 #include <fuse.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include "wfs.h"
 
 char *disk_img;
 int num_inodes;
@@ -42,17 +45,17 @@ void init_fs(){
 		perror("open");
 		exit(errno);
 	}
-	struct wfs_sb super = (struct wfs_sb)malloc(super_size);
-	super.num_inodes = num_inodes;
-	super.num_data_blocks = num_data_blocks;
-	super.i_bitmap_ptr = super_size;
-	super.d_bitmap_ptr = super_size + inode_bitmap_size;
-	super.i_blocks_ptr = super.d_bitmap_ptr + block_bitmap_size;
-	super.d_blocks_ptr = super.i_blocks_ptr + num_inodes*sizeof(struct wfs_inode);
+	struct wfs_sb *super = (struct wfs_sb*)malloc(super_size);
+	super->num_inodes = num_inodes;
+	super->num_data_blocks = num_blocks;
+	super->i_bitmap_ptr = super_size;
+	super->d_bitmap_ptr = super_size + inode_bitmap_size;
+	super->i_blocks_ptr = super->d_bitmap_ptr + block_bitmap_size;
+	super->d_blocks_ptr = super->i_blocks_ptr + num_inodes*sizeof(struct wfs_inode);
 	
 	struct stat buf;
 	fstat(fd, &buf);
-	if (super.d_blocks_ptr + num_blocks*BLOCK_SIZE > bf.st_size)
+	if (super->d_blocks_ptr + num_blocks*BLOCK_SIZE > buf.st_size)
 		//disk image not big enough
 		exit(1);
 
@@ -63,26 +66,26 @@ void init_fs(){
 
 	//free(super);
 
-	struct wfs_inode root = (struct wfs_inode)malloc(sizeof(struct wfs_inode));
-	root.num = 0;
-	root.mode = S_IFDIR;
-	root.uid = 0;
-	root.gid = 0;
-	root.size =0;
-	root.nlinks = 0;
-	root.atim = 0;
-	root.mtim = 0;
-	root.ctim =0;
+	struct wfs_inode *root = (struct wfs_inode*)malloc(sizeof(struct wfs_inode));
+	root->num = 0;
+	root->mode = S_IFDIR;
+	root->uid = 0;
+	root->gid = 0;
+	root->size =0;
+	root->nlinks = 0;
+	root->atim = 0;
+	root->mtim = 0;
+	root->ctim =0;
 
 	
-	uint i = 0b10000000;
-	lseek(fd, super.i_bitmap_ptr, SEEK_SET);
-       	if (write(fd, i, 1) == -1){
+	int i = 1 << 7;
+	lseek(fd, super->i_bitmap_ptr, SEEK_SET);
+       	if (write(fd, &i, 1) == -1){
 		perror("write");
 		exit(errno);
 	}
 
-	lseek(fd, super.i_blocks_ptr, SEEK_SET);
+	lseek(fd, super->i_blocks_ptr, SEEK_SET);
 	if (write(fd, root, sizeof(struct wfs_inode)) == -1){
 		perror("write");
 		exit(errno);
