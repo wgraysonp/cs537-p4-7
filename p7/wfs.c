@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <time.h>
+#include <unistd.h>
 #include "wfs.h"
 
 char *disk_image = NULL;
@@ -50,6 +51,32 @@ int alloc_inode(){
 
 }
 
+/*
+ * same as the above function be looks for an empty data block
+ */
+
+int alloc_dblock(){
+	uint32_t curr_bits;
+	uint32_t check_bit;
+	int dblock_num = 0;
+
+	char *ptr = super_block->d_bitmap_ptr;
+	while(ptr < super_block->i_blocks_ptr){
+		curr_bits = *ptr;
+		check_bit = 1;
+		for (int i = 0; i < 8; i++){
+			check_bit << i;
+			if (!(check_bit && curr_bits)){
+				return dblock_num;
+			}
+			dblock_num++;
+		}
+		ptr++;
+	}
+
+	return -1;
+}
+
 
 /*
  * Given a file path, finds the corresponding inode
@@ -68,21 +95,26 @@ int get_inode(const char *path, struct wfs_inode *inode){
 
 	inode->atim = time(NULL);
 
-
-	if (strcmp(token, "")==0){
+	// move past the root directory
+	if (strcmp(token, "")==0 || strcmp(toke, ".") == 0){
 		token = strtock(NULL, &delim);
 	}
 
 	while(token != NULL){
 		if (inode->mode == S_IFDIR){ 
 			found = 0;
-			for (int i = 0; i < N_BLOCKS; i++){
-				dir = (struct wfs_dentry*)disk_image[inode->blocks[i]];
-				if (strcmp(dir->name, token) == 0){
-					inode_num = dir->num;
-					found = 1;
-					break;
+			for (int i = 0; i < IND_BLOCK; i++){
+				for (int j = 0; j < 512; j+= 32){
+					int data_loc = disk_image + inode->blocks[i] + j;
+					dir = (struct wfs_dentry*)data_loc;
+					if (strcmp(dir->name, token) == 0){
+						inode_num = dir->num;
+						found = 1;
+						break;
+					}
 				}
+				if (found = 1)
+					break;
 			}
 
 			if (found == 0){
@@ -135,8 +167,67 @@ static int wfs_mknod(const char *path, mode_t mode){
 
 	int inode_num;
 	if ((inode_num = alloc_inode()) == -1){
+		return ENOSPC;
+	}
+
+	struct wfs_inode *inode;
+	if (get_inode(path, inode) != -1){
 		return EEXIST;
 	}
+
+	inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*sizeof(struct wfs_inode));
+	inode->num = inode_num;
+	inode->mode = mode;
+	inode->uid = getuid();
+	inode->gid = getgid();
+	inode->size = 0;
+	inode->nlinks = 0;
+	inode->atim = time(NULL);
+	inode->mtim = time(NULL);
+	inode->ctim = time(NULL);
+
+	int dblock_num;
+	if ((dblock_num = alloc_dblock()) == -1){
+		return ENOSPC;
+	} 
+
+	char *f_name = path[strlen(path)-1];
+
+        while(*f_name != '\'){
+                f_name--;
+        }
+        *f_name = '\0';
+        f_name++;
+
+
+        struct wfs_inode *parent;
+        if (get_inode(path, parent) == -1){
+		return ENOENT;
+	}
+
+	struct wfs_dentry *dentry;
+
+	if (parent->size >= 512*7){
+		return ENOSPC;
+	} else if (parent->size % 512 == 0){
+		int dblock_num;
+		if ((dblock_num = alloc_dblock()) == -1){
+			return ENOSPC;
+		}
+		parent->blocks[parent->size/512] = dblock_num;
+		dentry = (struct wfs_dentry)(super_block->d_blocks_ptr + dblock_num*BLOCK_SIZE);
+		strcpy(dentry->name, f_name);
+		dentry->num = inode_num;
+	} else {
+		int block_offset = parent->size % BLOCK_SIZE;
+		int insert_block = parent->size / BLOCK_SIZE;
+		int block_start = parent->blocks[insert_block]*BLOCK_SIZE + super_block->dblocks_ptr;
+		dentry = (struct wfs_dentry)(block_start + block_offset);
+		strcpy(dentry->name, f_name);
+		dentry->num = inode_num;
+	}
+	
+	return 0;
 }
 
 
