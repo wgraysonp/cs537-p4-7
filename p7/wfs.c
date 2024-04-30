@@ -35,6 +35,7 @@ int alloc_inode(){
 			printf("curr_bits %x\n", curr_bits);
 			if (!(check_bit & curr_bits)){
 				printf("returning inode num: %d\n", inode_num);
+				*ptr = curr_bits | check_bit;
 				return inode_num;
 			}
 			check_bit >>= 1;
@@ -65,6 +66,7 @@ int alloc_dblock(){
 		check_bit = 0x80;
 		for (int i = 0; i < 8; i++){
 			if (!(check_bit & curr_bits)){
+				*ptr = curr_bits | check_bit;
 				return dblock_num;
 			}
 			dblock_num++;
