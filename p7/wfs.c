@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
 
 char *disk_image = NULL;
 struct wfs_sb *super_block;
@@ -19,6 +20,7 @@ struct wfs_sb *super_block;
  * number on success or -1 on failure
  */
 int alloc_inode(){
+	printf("alloc_inode\n");
 	int curr_bits;
 	int check_bit;
 	int inode_num = 0;
@@ -46,6 +48,7 @@ int alloc_inode(){
  */
 
 int alloc_dblock(){
+	printf("alloc_dblock\n");
 	uint32_t curr_bits;
 	uint32_t check_bit;
 	int dblock_num = 0;
@@ -72,13 +75,18 @@ int alloc_dblock(){
  * Given a file path, finds the corresponding inode
  * and points inode to it.
  * return 0 on success or -1 on failure
+ * TODO: FIX this. its buggy and segfaults
  */
 int get_inode(const char *path, struct wfs_inode *inode){
+
+	printf("get_inode\n");
+
 	char delim = '/';
 	int inode_num = 0;
 	int found = 0;
 	struct wfs_dentry *dir;
-	inode = (struct wfs_inode*)super_block->i_blocks_ptr;
+	//sefault here
+	inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr);
 	char *path_copy = (char*)malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);
 	char *token = strtok(path_copy, &delim);
@@ -88,6 +96,7 @@ int get_inode(const char *path, struct wfs_inode *inode){
 	inode->atim = time(NULL);
 
 	// move past the root directory
+	// segfault here
 	if (strcmp(token, "")==0 || strcmp(token, ".") == 0){
 		token = strtok(NULL, &delim);
 	}
@@ -120,7 +129,7 @@ int get_inode(const char *path, struct wfs_inode *inode){
 			// so the path is invalid
 			return -1;
 		}
-		inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*sizeof(struct wfs_inode));
+		inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
 		bitcheck = bitcheck << (inode_num % 8);
 		valid_bit_loc = (char*)(inode_num/8 + super_block->i_bitmap_ptr);
 		if (!(bitcheck && (uint32_t)*valid_bit_loc)){
@@ -139,9 +148,12 @@ int get_inode(const char *path, struct wfs_inode *inode){
 
 static int wfs_getattr(const char *path, struct stat *stbuf){
 
+	printf("CALL: getattr\n");
+
 	struct wfs_inode *inode = NULL;
 	
 	if (get_inode(path, inode) == -1){
+		printf("ERROR: get_inode failed\n");
 		return ENOENT;
 	}
 
@@ -161,22 +173,26 @@ static int wfs_getattr(const char *path, struct stat *stbuf){
 
 static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 
+	printf("CALL: mknod\n");
+
 	char* path_copy = malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);
 
 	int inode_num;
 	if ((inode_num = alloc_inode()) == -1){
 		free(path_copy);
+		printf("ERROR: Failed to allocated inode\n");
 		return ENOSPC;
 	}
 
 	struct wfs_inode *inode = NULL;
 	if (get_inode(path_copy, inode) != -1){
 		free(path_copy);
+		printf("ERROR: inode already exists.");
 		return EEXIST;
 	}
 
-	inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*sizeof(struct wfs_inode));
+	inode = (struct wfs_inode*)(super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
 	inode->num = inode_num;
 	inode->mode = mode;
 	inode->uid = getuid();
@@ -186,12 +202,6 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 	inode->atim = time(NULL);
 	inode->mtim = time(NULL);
 	inode->ctim = time(NULL);
-
-	int dblock_num;
-	if ((dblock_num = alloc_dblock()) == -1){
-		free(path_copy);
-		return ENOSPC;
-	} 
 
 	char *f_name = &path_copy[strlen(path)-1];
 
@@ -205,6 +215,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
         struct wfs_inode *parent = NULL;
         if (get_inode(path_copy, parent) == -1){
 		free(path_copy);
+		printf("ERROR: Failed to get parent inode\n");
 		return ENOENT;
 	}
 
@@ -212,17 +223,20 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 
 	if (parent->size >= 512*7){
 		free(path_copy);
+		printf("ERROR: Parent directory full\n");
 		return ENOSPC;
 	} else if (parent->size % 512 == 0){
 		int dblock_num;
 		if ((dblock_num = alloc_dblock()) == -1){
 			free(path_copy);
+			printf("ERROR: faiiled to allocate data block\n");
 			return ENOSPC;
 		}
 		parent->blocks[parent->size/512] = dblock_num;
 		dentry = (struct wfs_dentry*)(super_block->d_blocks_ptr + dblock_num*BLOCK_SIZE);
 		strcpy(dentry->name, f_name);
 		dentry->num = inode_num;
+		parent->size += 32;
 	} else {
 		off_t block_offset = parent->size % BLOCK_SIZE;
 		int insert_block = parent->size / BLOCK_SIZE;
@@ -230,6 +244,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 		dentry = (struct wfs_dentry*)(block_start + block_offset);
 		strcpy(dentry->name, f_name);
 		dentry->num = inode_num;
+		parent->size += 32;
 	}
 
 	free(path_copy);
@@ -237,10 +252,44 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 	return 0;
 }
 
+static int wfs_mkdir(const char *path, mode_t mode){
+
+	printf("CALL: mkdir\n");
+	
+	return wfs_mknod(path, S_IFDIR, 0);	
+
+}
+
+static int wfs_unlink(const char *pathname){
+	printf("CALL: unlink\n");
+	return 0;
+}
+
+static int wfs_rmdir(const char *pathname){
+	printf("CALL: rmdir\n");
+	return 0;
+}
+
+static int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
+	printf("CALL: read\n");
+	return 0;
+}
+
+static int wfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
+	printf("CALL: write\n");
+	return 0;
+}
+
+static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi){
+	printf("CALL: readdir\n");
+	return 0;
+}
+
 
 
 
 void init_disk(char *f_name){
+	printf("f_name %s", f_name);
 	int fd = open(f_name, O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 	if (fd < 0)
 		perror("open");
@@ -263,13 +312,17 @@ void init_disk(char *f_name){
 static struct fuse_operations ops = {
   .getattr = wfs_getattr,
   .mknod   = wfs_mknod,
+  .mkdir = wfs_mkdir,
+  .unlink  = wfs_unlink,
+  .rmdir   = wfs_rmdir,
+  .read    = wfs_read,
+  .write   = wfs_write,
+  .readdir = wfs_readdir,
 };
 
 int main (int argc, char *argv[]){
-
-	init_disk(argv[0]);
-	argv++;
-	argc--;
-
+	init_disk(argv[1]);
+	argv = &argv[2];
+	argc-=2;
 	return fuse_main(argc, argv, &ops, NULL);
 }

@@ -13,10 +13,12 @@
 char *disk_img;
 int num_inodes;
 int num_blocks;
+int test_flag = 0;
 
 void parse_args(int argc, char** argv){
 	int op;
-	while((op = getopt(argc, argv, "d:i:b:")) != -1){
+	int rem;
+	while((op = getopt(argc, argv, "d:i:b:t")) != -1){
 		switch(op){
 			case 'd':
 			disk_img = (char*)malloc((strlen(optarg)+1)*sizeof(char));
@@ -25,13 +27,21 @@ void parse_args(int argc, char** argv){
 
 			case 'i':
 			num_inodes = atoi(optarg);
+			rem = 32 - num_inodes % 32;
+			if (rem != 32)
+				num_inodes += rem;
 			break;
 
 			case 'b':
 			num_blocks = atoi(optarg);
-			int rem = 32 - num_blocks % 32;
+			rem = 32 - num_blocks % 32;
 			if (rem != 32)
 				num_blocks += rem;
+			break;
+
+			case 't':
+			test_flag = 1;
+			break;
 		}
 	}
 }
@@ -51,7 +61,7 @@ void init_fs(){
 	super->i_bitmap_ptr = super_size;
 	super->d_bitmap_ptr = super_size + inode_bitmap_size;
 	super->i_blocks_ptr = super->d_bitmap_ptr + block_bitmap_size;
-	super->d_blocks_ptr = super->i_blocks_ptr + num_inodes*sizeof(struct wfs_inode);
+	super->d_blocks_ptr = super->i_blocks_ptr + num_inodes*BLOCK_SIZE;
 	
 	struct stat buf;
 	fstat(fd, &buf);
@@ -96,10 +106,31 @@ void init_fs(){
 	
 }
 
+void test(){
+	int fd = open(disk_img, O_RDWR);
+	char *buf = malloc(sizeof(struct wfs_sb));
+	read(fd, buf, sizeof(struct wfs_sb));
+	struct wfs_sb *super = (struct wfs_sb*)buf;
+
+	printf("SUPER BLOCK CONTENTS: \n");
+	printf("num_nodes %ld\n", super->num_inodes);
+	printf("num_blocks %ld\n", super->num_data_blocks);
+	printf("i_bitmap_ptr %ld\n", super->i_bitmap_ptr);
+	printf("d_bitmap_ptr %ld\n", super->d_bitmap_ptr);
+	printf("iblocks_ptr %ld\n", super->i_blocks_ptr);
+	printf("d_blocks_ptr %ld\n", super->d_blocks_ptr);
+
+	free(buf);
+	close(fd);
+
+}
+
 int main(int argc, char* argv[]){
 
 	parse_args(argc, argv);
 	init_fs();
+	if (test_flag == 1)
+		test();
 
 	return 0;
 }
