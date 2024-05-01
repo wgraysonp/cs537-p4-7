@@ -275,13 +275,133 @@ static int wfs_mkdir(const char *path, mode_t mode){
 
 }
 
-static int wfs_unlink(const char *pathname){
-	printf("CALL: unlink\n");
+// helper
+int parse_path(const char *path, char **parent_path, char **filename) {
+        const char *ptr = path + strlen(path) - 1; // begin at end of path
+        const char *parent = NULL;
+        int parent_size = 0;
+        while (ptr >= path) {
+                if (*ptr == '/') {
+                        parent = ptr;
+                        break;
+                }
+                ptr--;
+        }
+        if (parent == NULL) {
+        	return -1;
+        } else {
+                parent_size = parent - path;
+                *parent_path = strndup(path, parent_size);
+                *filename = strdup(parent + 1);
+        }
 	return 0;
+} 
+
+
+static int wfs_unlink(const char *path) {
+	printf("CALL: unlink\n");
+        struct wfs_inode *inode; // = malloc(sizeof(struct wfs_inode));
+        struct wfs_inode *parent_inode; // = malloc(sizeof(struct wfs_inode));
+        char *parent_path;
+        char *filename;
+
+        if (get_inode(path, &inode) == -1) {
+		// TEMP
+		fprintf(stderr, "Error: Failed to get inode for %s\n", path);
+                return -ENOENT;
+        }
+
+        if (parse_path(path, &parent_path, &filename) == -1) {
+		return -ENOENT;
+	}
+        if (get_inode(parent_path, &parent_inode) == -1) {
+		// TEMP
+		fprintf(stderr, "Error: Failed to get inode for parent directory %s\n", parent_path);
+                return -ENOENT;
+        }
+
+	// free inode
+	int inode_byte = inode->num / 8; // bitmap byte containing inode
+	int inode_bit = inode->num % 8; // bitmap bit containing inode
+	unsigned char bit_mask = ~(1 << inode_bit);
+	unsigned char *inode_bitmap = (unsigned char*)(disk_image + super_block->i_bitmap_ptr);
+
+	inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
+
+	// free data blocks
+	for (int i = 0; i < D_BLOCK; i++) {
+		if (inode->blocks[i] !=0) {
+			int block_byte = inode->blocks[i] / 8; // byte containing block
+			int block_bit = inode->blocks[i] % 8; // bit containing block
+			unsigned char block_bit_mask = ~(1 << block_bit);
+			unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
+
+			block_bitmap[block_byte] &= block_bit_mask; // set block to 0
+		}
+	}
+
+	// remove inode directory entry
+	for (int i = 0; i < D_BLOCK; i++) {
+		if (parent_inode->blocks[i] != 0) {
+			struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + parent_inode->blocks[i] * BLOCK_SIZE);
+			for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+				if (strcmp(dentry[j].name, filename) == 0) {
+					dentry[j].num = 0; // set directory entry to 0
+				}
+			}
+		}
+
+	}
+	//free(inode);
+
+	parent_inode->mtim = time(NULL);
+	parent_inode->ctim = time(NULL);
+
+        return 0;
 }
 
-static int wfs_rmdir(const char *pathname){
+static int wfs_rmdir(const char *path){
 	printf("CALL: rmdir\n");
+	struct wfs_inode *inode; // = malloc(sizeof(struct wfs_inode));
+	struct wfs_inode *parent_inode;
+	char *parent_path;
+	char *dirname;
+
+	if (get_inode(path, &inode) == -1) {
+                return -ENOENT;
+        }
+	if (parse_path(path, &parent_path, &dirname) == -1) {
+		return -ENOENT;
+	}
+
+	if (get_inode(parent_path, &parent_inode) == -1) {
+		return -ENOENT;
+	}
+
+	 // free inode
+        int inode_byte = inode->num / 8; // bitmap byte containing inode
+        int inode_bit = inode->num % 8; // bitmap bit containing inode
+        unsigned char bit_mask = ~(1 << inode_bit);
+        unsigned char *inode_bitmap = (unsigned char*)(disk_image + super_block->i_bitmap_ptr);
+
+        inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
+
+	// remove parent directory entry
+        for (int i = 0; i < D_BLOCK; i++) {
+        	if (parent_inode->blocks[i] != 0) {
+                        struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + parent_inode->blocks[i] * BLOCK_SIZE);
+                        for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+                                if (strcmp(dentry[j].name, dirname) == 0) {
+                                        dentry[j].num = 0; // set directory entry to 0
+                                }
+                        }
+                }
+
+        }
+
+	parent_inode->mtim = time(NULL);
+        parent_inode->ctim = time(NULL);
+
 	return 0;
 }
 
