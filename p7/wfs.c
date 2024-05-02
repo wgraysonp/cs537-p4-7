@@ -31,8 +31,6 @@ int alloc_inode(){
 		curr_bits = *ptr;
 		check_bit = 0x80;
 		for (int i =0; i < 8; i++){
-			printf("check_bit %x\n", check_bit);
-			printf("curr_bits %x\n", curr_bits);
 			if (!(check_bit & curr_bits)){
 				printf("returning inode num: %d\n", inode_num);
 				*ptr = curr_bits | check_bit;
@@ -98,8 +96,8 @@ int get_inode(const char *path, struct wfs_inode **inode){
 	char *path_copy = (char*)malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);
 	char *token = strtok(path_copy, &delim);
-	uint32_t bitcheck = 1;
-	char* valid_bit_loc = NULL;
+	unsigned int bitcheck = 0x80;
+	unsigned int *valid_bit_loc = NULL;
 
 	(*inode)->atim = time(NULL);
 	
@@ -144,12 +142,15 @@ int get_inode(const char *path, struct wfs_inode **inode){
 			// so the path is invalid
 			return -1;
 		}
-		*inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
-		bitcheck = bitcheck << (inode_num % 8);
-		valid_bit_loc = (char*)(disk_image + inode_num/8 + super_block->i_bitmap_ptr);
-		if (!(bitcheck && (uint32_t)*valid_bit_loc)){
+
+		bitcheck = 0x80 >> (inode_num % 8);
+		valid_bit_loc = (unsigned int*)(disk_image + inode_num/8 + super_block->i_bitmap_ptr);
+		if (!(bitcheck & *valid_bit_loc)){
+			printf("Bit check failed in get inode\n");
+			printf("valid bits: %x\n", *valid_bit_loc);
 			return -1;
 		}
+		*inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
 		(*inode)->atim = time(NULL);
 		token = strtok(NULL, &delim);
 
@@ -193,19 +194,19 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 	char* path_copy = malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);
 
-	int inode_num;
-	if ((inode_num = alloc_inode()) == -1){
-		free(path_copy);
-		printf("ERROR: Failed to allocated inode\n");
-		return -ENOSPC;
-	}
-
 	struct wfs_inode *inode = NULL;
 	if (get_inode(path_copy, &inode) != -1){
 		free(path_copy);
 		printf("ERROR: inode already exists.");
 		return -EEXIST;
 	}
+
+	int inode_num;
+        if ((inode_num = alloc_inode()) == -1){
+                free(path_copy);
+                printf("ERROR: Failed to allocated inode\n");
+                return -ENOSPC;
+        }
 
 	inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
 	inode->num = inode_num;
@@ -381,8 +382,10 @@ static int wfs_rmdir(const char *path){
 	 // free inode
         int inode_byte = inode->num / 8; // bitmap byte containing inode
         int inode_bit = inode->num % 8; // bitmap bit containing inode
-        unsigned char bit_mask = ~(1 << inode_bit);
+	unsigned char bit_mask = ~(1 << inode_bit);
         unsigned char *inode_bitmap = (unsigned char*)(disk_image + super_block->i_bitmap_ptr);
+	printf("inode bit mask %x\n", bit_mask);
+	printf("bitmap bits %x\n", inode_bitmap[inode_byte]);
 
         inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
 
