@@ -307,8 +307,6 @@ static int wfs_unlink(const char *path) {
         char *filename;
 
         if (get_inode(path, &inode) == -1) {
-		// TEMP
-		fprintf(stderr, "Error: Failed to get inode for %s\n", path);
                 return -ENOENT;
         }
 
@@ -316,8 +314,6 @@ static int wfs_unlink(const char *path) {
 		return -ENOENT;
 	}
         if (get_inode(parent_path, &parent_inode) == -1) {
-		// TEMP
-		fprintf(stderr, "Error: Failed to get inode for parent directory %s\n", parent_path);
                 return -ENOENT;
         }
 
@@ -409,9 +405,22 @@ static int wfs_rmdir(const char *path){
 }
 
 static int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
-	printf("CALL: read\n");
-	return 0;
+        printf("CALL: read\n");
+        /**struct wfs_inode *inode;
+        if (get_inode(path, &inode) == -1) {
+                return -ENOENT;
+        }
+
+        off_t block_index = offset / BLOCK_SIZE;
+        off_t block_offset = offset % BLOCK_SIZE;
+        size_t read = 0;
+        */
+        //while (read < size
+
+        return 0;
 }
+
+
 
 static int wfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
 	printf("CALL: write\n");
@@ -420,6 +429,39 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 
 static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi){
 	printf("CALL: readdir\n");
+	struct wfs_inode *inode;
+
+	if (get_inode(path, &inode) == -1) {
+		return -ENOENT;
+	}
+
+
+//	if ((*inode)->mode != S_IFDIR) {
+//		return -ENOENT;
+//	} 
+
+// skip?
+//	filler(buf, ".", NULL, 0);
+//	filler(buf, "..", NULL, 0);
+	int read = 0;
+	for (int i = 0; i < D_BLOCK; i++) {
+		if (inode->blocks[i] != 0) {
+			struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + inode->blocks[i] * BLOCK_SIZE);
+			for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
+				read++;
+				// begin reading at offset
+                                if (read >= offset)  {
+					if (dentry[j].num != 0) {
+						if (filler(buf, dentry[j].name, NULL, 0) != 0) {
+							return 0; // completed
+						}
+					}
+				}
+			}
+
+		}
+	}
+
 	return 0;
 }
 
