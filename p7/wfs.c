@@ -21,26 +21,23 @@ struct wfs_sb *super_block;
  */
 int alloc_inode(){
 	printf("alloc_inode\n");
-	unsigned int curr_bits;
-	unsigned int check_bit;
-	int inode_num = 0;
-	off_t count = 0;
+	unsigned char check_bit;
 
-	unsigned int *ptr = (unsigned int *)(disk_image + super_block->i_bitmap_ptr);
-	while (count <  super_block->num_inodes){
-		curr_bits = *ptr;
-		check_bit = 0x80;
+	unsigned char *ptr = (unsigned char *)(disk_image + super_block->i_bitmap_ptr);
+	printf("start of i_bitmap block%p\n",(void*) ptr);
+	for (int j = 0; j < super_block->num_inodes/8; j++){
 		for (int i =0; i < 8; i++){
-			if (!(check_bit & curr_bits)){
-				printf("returning inode num: %d\n", inode_num);
-				*ptr = curr_bits | check_bit;
-				return inode_num;
+			check_bit = 1 << i;
+			printf("byte %d contents : 0x%x\n",j, ptr[j]);
+			printf("byte %d contents: 0x%x\n", j+1, ptr[j+1]);
+			if (!(check_bit & ptr[j])){
+				printf("returning inode num: %d\n", j*8+i);
+				printf("alloc_inode edit address %p\n", (void*)&ptr[j]);
+				printf("alloc_inode next address %p\n", (void*)&ptr[j+1]);
+				ptr[j] |= check_bit;
+				return j*8 + i;
 			}
-			check_bit >>= 1;
-			inode_num++;
-			count++;
 		}
-		ptr++;
 	}
 
 	return -1;
@@ -53,25 +50,19 @@ int alloc_inode(){
 
 int alloc_dblock(){
 	printf("alloc_dblock\n");
-	unsigned int curr_bits;
-	unsigned int check_bit;
-	int dblock_num = 0;
-	off_t count = 0;
+	unsigned char check_bit;
 
-	unsigned int *ptr = (unsigned int*)(disk_image + super_block->d_bitmap_ptr);
-	while(count <  super_block->num_data_blocks){
-		curr_bits = *ptr;
-		check_bit = 0x80;
+	unsigned char *ptr = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
+	printf("Start of dbitmap block %p\n", (void*)ptr);
+	for (int j = 0; j < super_block->num_data_blocks/8; j++){
 		for (int i = 0; i < 8; i++){
-			if (!(check_bit & curr_bits)){
-				*ptr = curr_bits | check_bit;
-				return dblock_num;
+			check_bit = 1 << i;
+			if (!(check_bit & ptr[j])){
+				printf("alloc_dblock edit address %p\n", (void*)&ptr[j]);
+				ptr[j] |= check_bit;
+				return j*8 + i;
 			}
-			dblock_num++;
-			check_bit >>= 1;
-			count++;
 		}
-		ptr++;
 	}
 
 	return -1;
@@ -91,13 +82,12 @@ int get_inode(const char *path, struct wfs_inode **inode){
 	char delim = '/';
 	int inode_num = 0;
 	int found = 0;
-	struct wfs_dentry *dir;
 	*inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr);
 	char *path_copy = (char*)malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);
 	char *token = strtok(path_copy, &delim);
-	unsigned int bitcheck = 0x80;
-	unsigned int *valid_bit_loc = NULL;
+	unsigned char bitcheck = 1;
+	unsigned char *valid_bit_loc = NULL;
 
 	(*inode)->atim = time(NULL);
 	
@@ -114,21 +104,24 @@ int get_inode(const char *path, struct wfs_inode **inode){
 	printf("token %s\n", token);
 
 	while(token != NULL){
-		if ((*inode)->mode == S_IFDIR){ 
+		if ((*inode)->mode &  S_IFDIR){ 
 			found = 0;
-			for (int i = 0; i < IND_BLOCK; i++){
-				for (int j = 0; j < 512; j+= 32){
-					off_t data_loc = (off_t)disk_image +super_block->d_blocks_ptr + (*inode)->blocks[i]*BLOCK_SIZE + j;
-					dir = (struct wfs_dentry*)data_loc;
-					printf("dir name: %s", dir->name);
-					if (strcmp(dir->name, token) == 0){
-						inode_num = dir->num;
-						found = 1;
-						break;
+			for (int i = 0; i < N_BLOCKS; i++){
+				if ((*inode)->blocks[i] < super_block->num_data_blocks){
+					printf("d_blocks_ptr: %ld\n", super_block->d_blocks_ptr);
+					printf("block: %ld\n", (*inode)->blocks[i]*BLOCK_SIZE);
+					struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + (*inode)->blocks[i]*BLOCK_SIZE);
+					for (int j = 0; j < BLOCK_SIZE/sizeof(struct wfs_dentry); j++){
+						printf("dir name: %s", dentry[j].name);
+						if (strcmp(dentry[j].name, token) == 0){
+							inode_num = dentry[j].num;
+							found = 1;
+							break;
+						}
 					}
-				}
 				if (found == 1)
 					break;
+				}
 			}
 
 			if (found == 0){
@@ -143,8 +136,8 @@ int get_inode(const char *path, struct wfs_inode **inode){
 			return -1;
 		}
 
-		bitcheck = 0x80 >> (inode_num % 8);
-		valid_bit_loc = (unsigned int*)(disk_image + inode_num/8 + super_block->i_bitmap_ptr);
+		bitcheck = 1 << (inode_num % 8);
+		valid_bit_loc = (unsigned char*)(disk_image + inode_num/8 + super_block->i_bitmap_ptr);
 		if (!(bitcheck & *valid_bit_loc)){
 			printf("Bit check failed in get inode\n");
 			printf("valid bits: %x\n", *valid_bit_loc);
@@ -190,6 +183,7 @@ static int wfs_getattr(const char *path, struct stat *stbuf){
 static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 
 	printf("CALL: mknod\n");
+	printf("mode: %x\n", mode);
 
 	char* path_copy = malloc((strlen(path)+1)*sizeof(char));
 	strcpy(path_copy, path);

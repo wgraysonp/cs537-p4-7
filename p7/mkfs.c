@@ -65,6 +65,7 @@ void init_fs(){
 	}
 
 	char *mem = mmap(NULL, buf.st_size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+//memset(mem, 0, buf.st_size);
 
 	struct wfs_sb *super = (struct wfs_sb*)mem;
         super->num_inodes = num_inodes;
@@ -88,7 +89,7 @@ void init_fs(){
 	root->ctim =0;
 
 	unsigned int *i = (unsigned int *)(mem + super->i_bitmap_ptr);
-       	*i = 0x80;
+       	i[0] = 0x1;
 	close(fd);	
 	
 }
