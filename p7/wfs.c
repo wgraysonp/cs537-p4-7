@@ -337,7 +337,7 @@ static int wfs_unlink(const char *path) {
 	inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
 
 	// free data blocks
-	for (int i = 0; i < D_BLOCK; i++) {
+	for (int i = 0; i < IND_BLOCK; i++) {
 		if (inode->blocks[i] != UNUSED) {
 			int block_byte = inode->blocks[i] / 8; // byte containing block
 			int block_bit = inode->blocks[i] % 8; // bit containing block
@@ -345,6 +345,18 @@ static int wfs_unlink(const char *path) {
 			unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
 
 			block_bitmap[block_byte] &= block_bit_mask; // set block to 0
+		}
+	}
+
+	off_t *ind_block = &inode->blocks[IND_BLOCK];
+	for (int i = 0; i < BLOCK_SIZE/sizeof(IND_BLOCK); i++){
+		if(!(inode->mode & S_IFDIR)){
+			int block_byte = ind_block[i]/8;
+			int block_bit = ind_block[i]%8;
+			unsigned char block_bit_mask = ~(1 << block_bit);
+			unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
+			if (block_byte != 0)
+				block_bitmap[block_byte] &= block_bit_mask;
 		}
 	}
 
@@ -393,6 +405,21 @@ static int wfs_rmdir(const char *path){
         unsigned char *inode_bitmap = (unsigned char*)(disk_image + super_block->i_bitmap_ptr);
 
         inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
+					      //
+	// free bitmap entries for directories
+	//
+	for (int i = 0; i < IND_BLOCK; i++){
+		if (inode->blocks[i] != UNUSED) {
+                        int block_byte = inode->blocks[i] / 8; // byte containing block
+                        int block_bit = inode->blocks[i] % 8; // bit containing block
+                        unsigned char block_bit_mask = ~(1 << block_bit);
+                        unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
+
+                        block_bitmap[block_byte] &= block_bit_mask; // set block to 0
+                }
+
+	}
+	
 
 	// remove parent directory entry
         for (int i = 0; i < D_BLOCK; i++) {
@@ -433,7 +460,88 @@ static int wfs_read(const char* path, char *buf, size_t size, off_t offset, stru
 
 static int wfs_write(const char* path, const char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
 	printf("CALL: write\n");
-	return 0;
+
+	size_t bytes_written = 0;
+	size_t to_write;
+
+	struct wfs_inode *inode;
+	if (get_inode(path, &inode)==-1){
+		return -ENOENT;
+	}
+
+	off_t block_index = offset / BLOCK_SIZE;
+	off_t block_offset = offset % BLOCK_SIZE;
+	off_t indirect_offset;
+	off_t indirect_ptr;
+
+	void *dest = NULL;
+
+	while(bytes_written < size && block_index < IND_BLOCK){
+		dest = (void*)(disk_image + super_block->d_blocks_ptr + inode->blocks[block_index]*BLOCK_SIZE + block_offset);
+		if (block_offset == 0 || block_index == IND_BLOCK - 1){
+			break;
+		} else if (block_offset == 0){
+			int d_block_num;
+			if ((d_block_num = alloc_dblock()) == -1){
+				return ENOSPC;
+			}
+			block_index++;
+			inode->blocks[block_index] = d_block_num;
+			dest = (void*)(disk_image + super_block->d_blocks_ptr + inode->blocks[block_index]*BLOCK_SIZE + block_offset);
+		}
+
+		to_write = size - bytes_written;
+		if (to_write > BLOCK_SIZE - block_offset)
+			to_write = BLOCK_SIZE - block_offset;
+		memcpy(dest, (void*)buf, to_write);
+		inode->size += to_write;
+		bytes_written += to_write;
+		buf += to_write;
+		block_offset = 0;
+	}
+
+	// indirect block;
+	
+	indirect_offset = offset - 7*BLOCK_SIZE;
+        if(indirect_offset < 0)
+           	indirect_offset = 0;
+
+	indirect_ptr = indirect_offset/BLOCK_SIZE*sizeof(off_t);
+
+	size_t *ind_block = (size_t*)(disk_image + super_block->d_blocks_ptr + inode->blocks[IND_BLOCK]*BLOCK_SIZE);
+
+	while(bytes_written < size){
+		if (indirect_offset > BLOCK_SIZE*BLOCK_SIZE/sizeof(off_t)){
+			return ENOSPC;
+		}
+		if(indirect_offset % BLOCK_SIZE == 0){
+			int d_block_num;
+			if((d_block_num = alloc_dblock()) == -1){
+				return ENOSPC;
+			}
+			
+			ind_block[indirect_offset/BLOCK_SIZE] = d_block_num;
+			dest = (void*)(disk_image + super_block->d_blocks_ptr + d_block_num*BLOCK_SIZE + block_offset);
+		} else {
+
+			dest = (void*)(disk_image + super_block->d_blocks_ptr + ind_block[indirect_ptr]*BLOCK_SIZE + block_offset);
+
+		}
+
+		to_write = size - bytes_written;
+                if (to_write > BLOCK_SIZE - block_offset)
+                        to_write = BLOCK_SIZE - block_offset;
+                memcpy(dest, (void*)buf, to_write);
+		inode->size += to_write;
+                bytes_written += to_write;
+                buf += to_write;
+                block_offset = 0;
+
+
+	}
+
+
+	return bytes_written;
 }
 
 
