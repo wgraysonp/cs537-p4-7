@@ -87,6 +87,9 @@ void init_fs(){
 	root->atim = 0;
 	root->mtim = 0;
 	root->ctim =0;
+	for (int i = 0; i < N_BLOCKS; i++){
+		root->blocks[i] = -1;
+	}
 
 	unsigned int *i = (unsigned int *)(mem + super->i_bitmap_ptr);
        	i[0] = 0x1;

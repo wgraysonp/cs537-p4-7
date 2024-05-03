@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <dirent.h>
 
+#define UNUSED -1
+
 char *disk_image = NULL;
 struct wfs_sb *super_block;
 
@@ -107,7 +109,7 @@ int get_inode(const char *path, struct wfs_inode **inode){
 		if ((*inode)->mode &  S_IFDIR){ 
 			found = 0;
 			for (int i = 0; i < N_BLOCKS; i++){
-				if ((*inode)->blocks[i] < super_block->num_data_blocks){
+				if ((*inode)->blocks[i] != UNUSED && (*inode)->blocks[i] < super_block->num_data_blocks){
 					printf("d_blocks_ptr: %ld\n", super_block->d_blocks_ptr);
 					printf("block: %ld\n", (*inode)->blocks[i]*BLOCK_SIZE);
 					struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + (*inode)->blocks[i]*BLOCK_SIZE);
@@ -219,7 +221,9 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 	inode->atim = time(NULL);
 	inode->mtim = time(NULL);
 	inode->ctim = time(NULL);
-
+	for (int i = 0; i < N_BLOCKS; i++){
+		inode->blocks[i] = UNUSED;
+	}
 
 	char *f_name = &path_copy[strlen(path)-1];
 
@@ -334,7 +338,7 @@ static int wfs_unlink(const char *path) {
 
 	// free data blocks
 	for (int i = 0; i < D_BLOCK; i++) {
-		if (inode->blocks[i] !=0) {
+		if (inode->blocks[i] != UNUSED) {
 			int block_byte = inode->blocks[i] / 8; // byte containing block
 			int block_bit = inode->blocks[i] % 8; // bit containing block
 			unsigned char block_bit_mask = ~(1 << block_bit);
@@ -444,7 +448,7 @@ static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_
 
 	int read = 0;
 	for (int i = 0; i < D_BLOCK; i++) {
-		if (inode->blocks[i] < super_block->num_data_blocks) {
+		if (inode->blocks[i] != UNUSED && inode->blocks[i] < super_block->num_data_blocks) {
 			struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + inode->blocks[i] * BLOCK_SIZE);
 			for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
 				// begin reading at offset
@@ -453,6 +457,7 @@ static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_
 						printf("Dir name in readdir: %s\n", dentry[j].name);
 						printf("Dir num: %d\n", dentry[j].num);
 						printf("Block num: %d\n", i);
+						printf("Inode num: %d\n", inode->num);
 						if (filler(buf, dentry[j].name, NULL, 0) != 0) {
 							return 0; // completed
 						}
