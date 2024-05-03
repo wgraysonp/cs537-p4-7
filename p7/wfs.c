@@ -245,23 +245,28 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 		return -ENOSPC;
 	} else if (parent->size % 512 == 0){
 		int dblock_num;
+		printf("creating entry %s with new block\n", f_name);
 		if ((dblock_num = alloc_dblock()) == -1){
 			free(path_copy);
 			printf("ERROR: faiiled to allocate data block\n");
 			return -ENOSPC;
 		}
+		printf("dblock num: %d\n", dblock_num);
+		printf("block array entry %ld\n", parent->size/512);
 		parent->blocks[parent->size/512] = dblock_num;
 		dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + dblock_num*BLOCK_SIZE);
 		strcpy(dentry->name, f_name);
 		dentry->num = inode_num;
 		parent->size += 32;
 	} else {
-		off_t block_offset = parent->size % BLOCK_SIZE;
+		printf("creating entry %s\n", f_name);
+		off_t block_offset = (parent->size % BLOCK_SIZE)/32;
+		printf("block_offset %ld\n", block_offset);
 		int insert_block = parent->size / BLOCK_SIZE;
-		off_t block_start = (off_t)disk_image + parent->blocks[insert_block]*BLOCK_SIZE + super_block->d_blocks_ptr;
-		dentry = (struct wfs_dentry*)(block_start + block_offset);
-		strcpy(dentry->name, f_name);
-		dentry->num = inode_num;
+		printf("insert block %d\n", insert_block);
+		struct wfs_dentry* dentry  = (struct wfs_dentry*)(disk_image + parent->blocks[insert_block]*BLOCK_SIZE + super_block->d_blocks_ptr);
+		strcpy(dentry[block_offset].name, f_name);
+		dentry[block_offset].num = inode_num;
 		parent->size += 32;
 	}
 
@@ -439,12 +444,15 @@ static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_
 
 	int read = 0;
 	for (int i = 0; i < D_BLOCK; i++) {
-		if (inode->blocks[i] != 0) {
+		if (inode->blocks[i] < super_block->num_data_blocks) {
 			struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + inode->blocks[i] * BLOCK_SIZE);
 			for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
 				// begin reading at offset
                                 if (read >= offset)  {
 					if (dentry[j].num != 0) {
+						printf("Dir name in readdir: %s\n", dentry[j].name);
+						printf("Dir num: %d\n", dentry[j].num);
+						printf("Block num: %d\n", i);
 						if (filler(buf, dentry[j].name, NULL, 0) != 0) {
 							return 0; // completed
 						}
