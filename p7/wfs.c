@@ -40,7 +40,7 @@ int alloc_inode(){
 		}
 	}
 
-	return -1;
+	return -1; 
 
 }
 
@@ -142,7 +142,8 @@ int get_inode(const char *path, struct wfs_inode **inode){
 			printf("Bit check failed in get inode\n");
 			printf("valid bits: %x\n", *valid_bit_loc);
 			return -1;
-		}
+		} 
+
 		*inode = (struct wfs_inode*)(disk_image + super_block->i_blocks_ptr + inode_num*BLOCK_SIZE);
 		(*inode)->atim = time(NULL);
 		token = strtok(NULL, &delim);
@@ -174,6 +175,12 @@ static int wfs_getattr(const char *path, struct stat *stbuf){
 	stbuf->st_mtime = inode->mtim;
 	stbuf->st_mode = inode->mode;
 	stbuf->st_size = inode->size;
+
+	// maybe required?
+	stbuf->st_ino = inode->num;
+	stbuf->st_nlink = inode->nlinks;
+	stbuf->st_blksize = BLOCK_SIZE;
+	stbuf->st_blocks = inode->size / BLOCK_SIZE;
 
 	return 0;
 
@@ -212,6 +219,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 	inode->atim = time(NULL);
 	inode->mtim = time(NULL);
 	inode->ctim = time(NULL);
+
 
 	char *f_name = &path_copy[strlen(path)-1];
 
@@ -374,8 +382,6 @@ static int wfs_rmdir(const char *path){
         int inode_bit = inode->num % 8; // bitmap bit containing inode
 	unsigned char bit_mask = ~(1 << inode_bit);
         unsigned char *inode_bitmap = (unsigned char*)(disk_image + super_block->i_bitmap_ptr);
-	printf("inode bit mask %x\n", bit_mask);
-	printf("bitmap bits %x\n", inode_bitmap[inode_byte]);
 
         inode_bitmap[inode_byte] &= bit_mask; // set inode to 0
 
@@ -421,6 +427,8 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 	return 0;
 }
 
+
+// ls is working
 static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi){
 	printf("CALL: readdir\n");
 	struct wfs_inode *inode;
@@ -429,20 +437,11 @@ static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_
 		return -ENOENT;
 	}
 
-
-//	if ((*inode)->mode != S_IFDIR) {
-//		return -ENOENT;
-//	} 
-
-// skip?
-//	filler(buf, ".", NULL, 0);
-//	filler(buf, "..", NULL, 0);
 	int read = 0;
 	for (int i = 0; i < D_BLOCK; i++) {
 		if (inode->blocks[i] != 0) {
 			struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + inode->blocks[i] * BLOCK_SIZE);
 			for (int j = 0; j < BLOCK_SIZE / sizeof(struct wfs_dentry); j++) {
-				read++;
 				// begin reading at offset
                                 if (read >= offset)  {
 					if (dentry[j].num != 0) {
@@ -450,6 +449,7 @@ static int wfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_
 							return 0; // completed
 						}
 					}
+				read++;
 				}
 			}
 
