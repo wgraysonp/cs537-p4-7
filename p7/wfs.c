@@ -449,21 +449,45 @@ static int wfs_rmdir(const char *path){
 	return 0;
 }
 
+
 static int wfs_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi){
         printf("CALL: read\n");
-        /**struct wfs_inode *inode;
+        struct wfs_inode *inode;
         if (get_inode(path, &inode) == -1) {
                 return -ENOENT;
         }
 
-        off_t block_index = offset / BLOCK_SIZE;
-        off_t block_offset = offset % BLOCK_SIZE;
         size_t read = 0;
-        */
-        //while (read < size
+        while (read < size) {
+        size_t to_read = size - read;
+        off_t block_index = (offset + read) / BLOCK_SIZE;
+        off_t block_offset = (offset + read) % BLOCK_SIZE;
+        size_t bytes_block = BLOCK_SIZE - block_offset; // bytes remaining in block
+        size_t bytes_to_read;
 
-        return 0;
+        if (bytes_block < to_read) {
+                bytes_to_read = bytes_block;
+        } else {
+                bytes_to_read = to_read;
+        }
+
+
+        char *data;
+        if (block_index < D_BLOCK) {
+                data = disk_image + inode->blocks[block_index] * BLOCK_SIZE + block_offset;
+                memcpy(buf + read, data, bytes_to_read);
+        } else {
+                size_t *ind_block = (size_t *)(disk_image + super_block->d_blocks_ptr + inode->blocks[IND_BLOCK]);
+                data = disk_image + ind_block[block_index] * BLOCK_SIZE + block_offset;
+                memcpy(buf, data, bytes_to_read);
+        }
+        // read
+        read += bytes_to_read;
+ }
+ //inode->atim = time(NULL);
+        return read;
 }
+
 
 
 
