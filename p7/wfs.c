@@ -26,16 +26,16 @@ int alloc_inode(){
 	unsigned char check_bit;
 
 	unsigned char *ptr = (unsigned char *)(disk_image + super_block->i_bitmap_ptr);
-	printf("start of i_bitmap block%p\n",(void*) ptr);
+	//printf("start of i_bitmap block%p\n",(void*) ptr);
 	for (int j = 0; j < super_block->num_inodes/8; j++){
 		for (int i =0; i < 8; i++){
 			check_bit = 1 << i;
-			printf("byte %d contents : 0x%x\n",j, ptr[j]);
-			printf("byte %d contents: 0x%x\n", j+1, ptr[j+1]);
+			//printf("byte %d contents : 0x%x\n",j, ptr[j]);
+			//printf("byte %d contents: 0x%x\n", j+1, ptr[j+1]);
 			if (!(check_bit & ptr[j])){
-				printf("returning inode num: %d\n", j*8+i);
-				printf("alloc_inode edit address %p\n", (void*)&ptr[j]);
-				printf("alloc_inode next address %p\n", (void*)&ptr[j+1]);
+			//	printf("returning inode num: %d\n", j*8+i);
+			//	printf("alloc_inode edit address %p\n", (void*)&ptr[j]);
+			//	printf("alloc_inode next address %p\n", (void*)&ptr[j+1]);
 				ptr[j] |= check_bit;
 				return j*8 + i;
 			}
@@ -55,12 +55,12 @@ int alloc_dblock(){
 	unsigned char check_bit;
 
 	unsigned char *ptr = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
-	printf("Start of dbitmap block %p\n", (void*)ptr);
+	//printf("Start of dbitmap block %p\n", (void*)ptr);
 	for (int j = 0; j < super_block->num_data_blocks/8; j++){
 		for (int i = 0; i < 8; i++){
 			check_bit = 1 << i;
 			if (!(check_bit & ptr[j])){
-				printf("alloc_dblock edit address %p\n", (void*)&ptr[j]);
+	//			printf("alloc_dblock edit address %p\n", (void*)&ptr[j]);
 				ptr[j] |= check_bit;
 				return j*8 + i;
 			}
@@ -110,11 +110,11 @@ int get_inode(const char *path, struct wfs_inode **inode){
 			found = 0;
 			for (int i = 0; i < N_BLOCKS; i++){
 				if ((*inode)->blocks[i] != UNUSED && (*inode)->blocks[i] < super_block->num_data_blocks){
-					printf("d_blocks_ptr: %ld\n", super_block->d_blocks_ptr);
-					printf("block: %ld\n", (*inode)->blocks[i]*BLOCK_SIZE);
+			//		printf("d_blocks_ptr: %ld\n", super_block->d_blocks_ptr);
+			//		printf("block: %ld\n", (*inode)->blocks[i]*BLOCK_SIZE);
 					struct wfs_dentry *dentry = (struct wfs_dentry*)(disk_image + super_block->d_blocks_ptr + (*inode)->blocks[i]*BLOCK_SIZE);
 					for (int j = 0; j < BLOCK_SIZE/sizeof(struct wfs_dentry); j++){
-						printf("dir name: %s", dentry[j].name);
+	//					printf("dir name: %s", dentry[j].name);
 						if (strcmp(dentry[j].name, token) == 0){
 							inode_num = dentry[j].num;
 							found = 1;
@@ -263,7 +263,7 @@ static int wfs_mknod(const char* path, mode_t mode, dev_t dev){
 		dentry->num = inode_num;
 		parent->size += 32;
 	} else {
-		printf("creating entry %s\n", f_name);
+		printf("creating entry %s with used block\n", f_name);
 		off_t block_offset = (parent->size % BLOCK_SIZE)/32;
 		printf("block_offset %ld\n", block_offset);
 		int insert_block = parent->size / BLOCK_SIZE;
@@ -341,6 +341,8 @@ static int wfs_unlink(const char *path) {
 		if (inode->blocks[i] != UNUSED) {
 			int block_byte = inode->blocks[i] / 8; // byte containing block
 			int block_bit = inode->blocks[i] % 8; // bit containing block
+			printf("block byte: %d\n", block_byte);
+			printf("block_bit: %d\n", block_bit);
 			unsigned char block_bit_mask = ~(1 << block_bit);
 			unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
 
@@ -348,16 +350,22 @@ static int wfs_unlink(const char *path) {
 		}
 	}
 
-	off_t *ind_block = &inode->blocks[IND_BLOCK];
-	for (int i = 0; i < BLOCK_SIZE/sizeof(IND_BLOCK); i++){
+	off_t *ind_block = (off_t*)(disk_image + super_block->d_blocks_ptr + inode->blocks[IND_BLOCK]*BLOCK_SIZE);
+	if(inode->blocks[IND_BLOCK] != UNUSED){
+	for (int i = 0; i < BLOCK_SIZE/sizeof(off_t); i++){
 		if(!(inode->mode & S_IFDIR)){
-			int block_byte = ind_block[i]/8;
-			int block_bit = ind_block[i]%8;
+			off_t block_byte = ind_block[i]/8;
+		//	printf("block_byte: %ld\n", block_byte);
+			off_t block_bit = ind_block[i]%8;
+		//	printf("block_bit: %ld\n", block_bit);
 			unsigned char block_bit_mask = ~(1 << block_bit);
 			unsigned char *block_bitmap = (unsigned char*)(disk_image + super_block->d_bitmap_ptr);
-			if (block_byte != 0)
+			if (block_byte != 0){
+				printf("block_byte in if: %ld\n", block_byte);
 				block_bitmap[block_byte] &= block_bit_mask;
+			}
 		}
+	}
 	}
 
 	// remove inode directory entry
@@ -436,6 +444,7 @@ static int wfs_rmdir(const char *path){
 
 	parent_inode->mtim = time(NULL);
         parent_inode->ctim = time(NULL);
+	parent_inode->size -= 32;
 
 	return 0;
 }
@@ -475,16 +484,23 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 	off_t indirect_ptr;
 
 	void *dest = NULL;
+	int blocks_alloced = 0;
+
+	printf("write size: %ld\n", size);
 
 	while(bytes_written < size && block_index < IND_BLOCK){
+		printf("Bytes written to direct blocks: %ld\n", bytes_written);
 		dest = (void*)(disk_image + super_block->d_blocks_ptr + inode->blocks[block_index]*BLOCK_SIZE + block_offset);
-		if (block_offset == 0 || block_index == IND_BLOCK - 1){
+		if (block_offset == 0 && block_index == IND_BLOCK - 1){
 			break;
 		} else if (block_offset == 0){
 			int d_block_num;
 			if ((d_block_num = alloc_dblock()) == -1){
 				return ENOSPC;
 			}
+			printf("alloc d block in direct blocks\n");
+			blocks_alloced++;
+			printf("blocks_allocated: %d\n", blocks_alloced);
 			block_index++;
 			inode->blocks[block_index] = d_block_num;
 			dest = (void*)(disk_image + super_block->d_blocks_ptr + inode->blocks[block_index]*BLOCK_SIZE + block_offset);
@@ -501,6 +517,8 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 	}
 
 	// indirect block;
+	//
+	// printf(
 	
 	indirect_offset = offset - 7*BLOCK_SIZE;
         if(indirect_offset < 0)
@@ -508,9 +526,19 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 
 	indirect_ptr = indirect_offset/BLOCK_SIZE*sizeof(off_t);
 
-	size_t *ind_block = (size_t*)(disk_image + super_block->d_blocks_ptr + inode->blocks[IND_BLOCK]*BLOCK_SIZE);
+	size_t *ind_block;
+
+	printf("bytes written after direct blocks %ld\n", bytes_written);
 
 	while(bytes_written < size){
+		if (inode->blocks[IND_BLOCK] == UNUSED){
+			printf("allocate indirect block\n");
+			int d_block_num;
+			if ((d_block_num = alloc_dblock()) == -1)
+				return ENOSPC;
+			inode->blocks[IND_BLOCK] = d_block_num;
+		}
+		ind_block = (size_t*)(disk_image + super_block->d_blocks_ptr + inode->blocks[IND_BLOCK]*BLOCK_SIZE);
 		if (indirect_offset > BLOCK_SIZE*BLOCK_SIZE/sizeof(off_t)){
 			return ENOSPC;
 		}
@@ -519,6 +547,7 @@ static int wfs_write(const char* path, const char *buf, size_t size, off_t offse
 			if((d_block_num = alloc_dblock()) == -1){
 				return ENOSPC;
 			}
+			printf("allocate block and place pointer in indirect block\n");
 			
 			ind_block[indirect_offset/BLOCK_SIZE] = d_block_num;
 			dest = (void*)(disk_image + super_block->d_blocks_ptr + d_block_num*BLOCK_SIZE + block_offset);
